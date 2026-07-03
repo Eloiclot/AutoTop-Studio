@@ -1,11 +1,11 @@
 import os
 import shutil
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips
-
+from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, ImageClip
 # --- CONFIGURACIÓ IMAGEMAGICK ---
 os.environ["IMAGEMAGICK_BINARY"] = r"C:\Program Files\ImageMagick-7.1.2-Q16-HDRI\magick.exe"
 
@@ -123,6 +123,53 @@ def delete_file(req: DeleteRequest):
         raise HTTPException(status_code=404, detail="L'arxiu no existeix.")
     os.remove(file_path)
     return {"status": "success"}
+
+# Model per rebre la configuració de la preview
+class PreviewRequest(BaseModel):
+    video_path: str
+    text: str = ""
+    color: str = "white"
+    stroke_color: str = "black"
+    stroke_width: int = 3
+    pos_y: int = 700
+    font_size: int = 70
+    font: str = "Arial"
+
+@app.post("/preview-frame")
+def get_preview_frame(req: PreviewRequest):
+    video_path = os.path.join(OUTPUT_DIR, req.video_path)
+    if not os.path.exists(video_path):
+        raise HTTPException(status_code=404, detail="Vídeo no trobat a la carpeta output")
+
+    try:
+        clip = VideoFileClip(video_path)
+        img_temp_path = "preview_bg_temp.png"
+        clip.save_frame(img_temp_path, t=0)
+        clip.close() 
+        
+        bg_clip = ImageClip(img_temp_path).set_duration(0.1)
+        clips_to_composite = [bg_clip]
+
+        if req.text:
+            # Creem el Text amb Vora i Tipografia
+            txt_clip = TextClip(req.text, fontsize=req.font_size, color=req.color, 
+                                font=req.font, stroke_color=req.stroke_color, stroke_width=req.stroke_width)
+            
+            # El centrem horitzontalment i usem la Y global
+            txt_clip = txt_clip.set_position(('center', req.pos_y)).set_duration(0.1)
+            clips_to_composite.append(txt_clip)
+
+        comp = CompositeVideoClip(clips_to_composite)
+        final_preview_path = "preview_final.png"
+        comp.save_frame(final_preview_path, t=0)
+        
+        bg_clip.close()
+        comp.close()
+        
+        return FileResponse(final_preview_path)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generant preview: {str(e)}")
 
 @app.post("/render")
 def renderitzar_clip(request: RenderRequest):
