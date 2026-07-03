@@ -1,0 +1,14 @@
+body, html {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  background-color: #242424;
+}
+
+/* Això és el que estava bloquejant l'amplada */
+#root {
+  max-width: 100% !important; 
+  width: 100%;
+  padding: 25 !important;
+  margin: 0 auto;
+}

@@ -1,0 +1,26 @@
+# Entorns virtuals i Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Node i Frontend
+node_modules/
+dist/
+.eslintcache
+
+# Carpetes de VÍDEOS i imatges temporals (MOLT IMPORTANT)
+assets/
+output/
+Tops_Finals/
+*.mp4
+*.png
+*.jpg
+preview_temp.png
+preview_final.png
+
+# Arxius de sistema i variables d'entorn
+.DS_Store
+Thumbs.db
+.env
