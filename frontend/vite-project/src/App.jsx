@@ -28,22 +28,26 @@ function App() {
   const [topTitol, setTopTitol] = useState("")
   const [topOrdre, setTopOrdre] = useState("ascendent")
   const [topNomSortida, setTopNomSortida] = useState("")
-  const [topClips, setTopClips] = useState([{ id: Date.now(), posicio: 1, arxiu: "", subtitol: "" }])
   const [renderitzantTop, setRenderitzantTop] = useState(false)
   const [missatgeTop, setMissatgeTop] = useState("")
 
-  // ESTATS PER A L'ESTIL I LA PREVIEW
-  const [estilText, setEstilText] = useState({ 
-    color: "#ffffff", 
-    stroke_color: "#000000", 
-    stroke_width: 4, 
-    pos_y: 600, 
-    font_size: 70,
-    font: "Arial"
+  // --- ESTATS D'ESTIL AÏLLATS ---
+  const [estilGlobal, setEstilGlobal] = useState({ 
+    color: "#ffffff", stroke_color: "#000000", stroke_width: 4, pos_x: "center", pos_y: 70, font_size: 80, font: "Arial",
+    list_x: 80, list_start_y: 450, list_gap_y: 110 // <-- AFEGEIX AIXÒ
   })
+  const [mostrarEstilGlobal, setMostrarEstilGlobal] = useState(false)
+
+  const estilPerDefecteClip = { color: "#ffffff", stroke_color: "#000000", stroke_width: 4, font_size: 70, font: "Arial" }
+
+  const [topClips, setTopClips] = useState([
+    { id: Date.now(), posicio: 1, arxiu: "", subtitol: "", mostrarEstil: false, estil: { ...estilPerDefecteClip } }
+  ])
+
+  // Estats de Previsualització
   const [previewSrc, setPreviewSrc] = useState(null)
   const [carregantPreview, setCarregantPreview] = useState(false)
-  const [previewClipId, setPreviewClipId] = useState(null)
+  const [previewClipId, setPreviewClipId] = useState(null) 
 
   const carregarExplorador = async (carpeta = "") => {
     const res = await fetch(`http://localhost:8000/list-output?folder=${carpeta}`);
@@ -129,72 +133,119 @@ function App() {
     carregarExplorador(carpetaActual);
   }
 
-  // AFEGIR AL TOP DES DE L'EXPLORADOR
   const afegirClipAlTop = (nomArxiu) => {
-    setTopClips(prev => [...prev, { id: Date.now(), posicio: prev.length + 1, arxiu: nomArxiu, subtitol: "" }]);
+    setTopClips(prev => [...prev, { id: Date.now(), posicio: prev.length + 1, arxiu: nomArxiu, subtitol: "", mostrarEstil: false, estil: { ...estilPerDefecteClip } }]);
     window.scrollTo({ top: 0, behavior: 'smooth' }); 
   }
 
   // LÒGICA CREADOR TOPS
-  const afegirSlotClip = () => setTopClips([...topClips, { id: Date.now(), posicio: topClips.length + 1, arxiu: "", subtitol: "" }]);
+  const afegirSlotClip = () => {
+    setTopClips([...topClips, { id: Date.now(), posicio: topClips.length + 1, arxiu: "", subtitol: "", mostrarEstil: false, estil: { ...estilPerDefecteClip } }]);
+  };
   
   const actualitzarSlot = (id, camp, valor) => {
     setTopClips(topClips.map(clip => clip.id === id ? { ...clip, [camp]: valor } : clip));
   };
+
+  const actualitzarEstilClip = (id, camp, valor) => {
+    setTopClips(topClips.map(clip => clip.id === id ? { ...clip, estil: { ...clip.estil, [camp]: valor } } : clip));
+  };
   
   const treureSlot = (id) => {
     setTopClips(topClips.filter(clip => clip.id !== id));
-    if (previewClipId === id) { setPreviewClipId(null); setPreviewSrc(null); }
+    if (previewClipId === id) tancarPreview();
   };
+
+  // --- PREVIEWS SEPARADES ---
+  const generarPreviewGlobal = async (silenci = false) => {
+    if (!topClips[0] || !topClips[0].arxiu) { alert("Posa un vídeo al primer clip per previsualitzar el fons."); return; }
+    if (!silenci) { setCarregantPreview(true); setPreviewSrc(null); }
+    setPreviewClipId('global'); 
+
+    body: JSON.stringify({
+    video_path: topClips[0].arxiu,
+    global_text: topTitol,
+    global_color: estilGlobal.color, global_stroke_color: estilGlobal.stroke_color, global_stroke_width: estilGlobal.stroke_width,
+    global_pos_x: estilGlobal.pos_x, global_pos_y: estilGlobal.pos_y, 
+    global_font_size: estilGlobal.font_size, global_font: estilGlobal.font,
+    clip_text: "", 
+    total_slots: topClips.length, current_slot: 0, // <-- 0 perquè només mostri els números sense text
+    list_x: estilGlobal.list_x, list_start_y: estilGlobal.list_start_y, list_gap_y: estilGlobal.list_gap_y
+  })
+
+    try {
+      const res = await fetch("http://localhost:8000/preview-frame", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          video_path: topClips[0].arxiu,
+          global_text: topTitol,
+          global_color: estilGlobal.color, global_stroke_color: estilGlobal.stroke_color, global_stroke_width: estilGlobal.stroke_width,
+          global_pos_x: estilGlobal.pos_x, global_pos_y: estilGlobal.pos_y, 
+          global_font_size: estilGlobal.font_size, global_font: estilGlobal.font,
+          clip_text: "" // Només el global
+        })
+      });
+      if (res.ok) { const blob = await res.blob(); setPreviewSrc(URL.createObjectURL(blob)); }
+    } catch (e) { if (!silenci) alert("❌ Error de connexió"); }
+    if (!silenci) setCarregantPreview(false);
+  }
   
-  const generarPreview = async (clip, silenci = false) => {
+  const generarPreviewClip = async (clip, silenci = false) => {
     if (!clip.arxiu) return;
-    
     if (!silenci) { setCarregantPreview(true); setPreviewSrc(null); }
     setPreviewClipId(clip.id); 
+
+    body: JSON.stringify({
+    video_path: clip.arxiu,
+    global_text: topTitol,
+    global_color: estilGlobal.color, global_stroke_color: estilGlobal.stroke_color, global_stroke_width: estilGlobal.stroke_width,
+    global_pos_x: estilGlobal.pos_x, global_pos_y: estilGlobal.pos_y, 
+    global_font_size: estilGlobal.font_size, global_font: estilGlobal.font,
+    clip_text: clip.subtitol, // Eliminem el `${clip.posicio}. ` d'aquí perquè ara ho dibuixa el Python
+    clip_color: clip.estil.color, clip_stroke_color: clip.estil.stroke_color, clip_stroke_width: clip.estil.stroke_width,
+    clip_font_size: clip.estil.font_size, clip_font: clip.estil.font,
+    total_slots: topClips.length, current_slot: clip.posicio, // <-- Li passem la posició actual
+    list_x: estilGlobal.list_x, list_start_y: estilGlobal.list_start_y, list_gap_y: estilGlobal.list_gap_y
+  })
 
     try {
       const res = await fetch("http://localhost:8000/preview-frame", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           video_path: clip.arxiu,
-          text: clip.subtitol ? `${clip.posicio}. ${clip.subtitol}` : `${clip.posicio}. (Sense text)`,
-          color: estilText.color, 
-          stroke_color: estilText.stroke_color,
-          stroke_width: estilText.stroke_width,
-          pos_y: estilText.pos_y, 
-          font_size: estilText.font_size,
-          font: estilText.font
+          // Enviem el Global (que sempre s'ha de veure)
+          global_text: topTitol,
+          global_color: estilGlobal.color, global_stroke_color: estilGlobal.stroke_color, global_stroke_width: estilGlobal.stroke_width,
+          global_pos_x: estilGlobal.pos_x, global_pos_y: estilGlobal.pos_y, 
+          global_font_size: estilGlobal.font_size, global_font: estilGlobal.font,
+          
+          // Enviem el Clip
+          clip_text: clip.subtitol ? `${clip.posicio}. ${clip.subtitol}` : `${clip.posicio}.`,
+          clip_color: clip.estil.color, clip_stroke_color: clip.estil.stroke_color, clip_stroke_width: clip.estil.stroke_width,
+          clip_pos_x: "center", // Forçat
+          clip_pos_y: 600,      // Forçat
+          clip_font_size: clip.estil.font_size, clip_font: clip.estil.font
         })
       });
-
-      if (res.ok) {
-        const blob = await res.blob();
-        setPreviewSrc(URL.createObjectURL(blob)); 
-      } else if (!silenci) {
-        const err = await res.json(); alert(`❌ Error: ${err.detail}`);
-      }
+      if (res.ok) { const blob = await res.blob(); setPreviewSrc(URL.createObjectURL(blob)); }
     } catch (e) { if (!silenci) alert("❌ Error de connexió"); }
-    
     if (!silenci) setCarregantPreview(false);
   }
 
-  // Tanca la preview completament
-  const tancarPreview = () => {
-    setPreviewSrc(null);
-    setPreviewClipId(null);
-    setCarregantPreview(false);
-  }
+  const tancarPreview = () => { setPreviewSrc(null); setPreviewClipId(null); setCarregantPreview(false); }
 
   useEffect(() => {
-    if (previewClipId !== null) {
+    if (previewClipId === 'global') {
+      const timer = setTimeout(() => { generarPreviewGlobal(true); }, 400); 
+      return () => clearTimeout(timer);
+    } else if (previewClipId !== null) {
       const clipActiu = topClips.find(c => c.id === previewClipId);
       if (clipActiu) {
-        const timer = setTimeout(() => { generarPreview(clipActiu, true); }, 400); 
+        const timer = setTimeout(() => { generarPreviewClip(clipActiu, true); }, 400); 
         return () => clearTimeout(timer);
       }
     }
-  }, [estilText, topClips, previewClipId]);
+  }, [estilGlobal, topTitol, topClips, previewClipId]);
 
   const generarTopFinal = async () => {
     if (!topTitol) { setMissatgeTop("❌ Posa-hi un títol global primer."); return; }
@@ -204,7 +255,7 @@ function App() {
     try {
       const res = await fetch("http://localhost:8000/render-top", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ titol_global: topTitol, ordre: topOrdre, clips: topClips, output_name: nomFinal })
+        body: JSON.stringify({ titol_global: topTitol, ordre: topOrdre, clips: topClips, output_name: nomFinal, estil_global: estilGlobal })
       });
       if (res.ok) { setMissatgeTop(`✅ TOP Generat perfectament a Tops_Finals!`); carregarExplorador(carpetaActual); } 
       else { const err = await res.json(); setMissatgeTop(`❌ ${err.detail}`); }
@@ -260,10 +311,21 @@ function App() {
       {pestanya === "tops" && (
         <div style={{ backgroundColor: "#1e1e1e", padding: "40px", borderRadius: "16px", marginBottom: "40px", textAlign: "left" }}>
           
-          <div style={{ display: "flex", gap: "20px", marginBottom: "30px" }}>
+          {/* BARRA SUPERIOR - TÍTOL GLOBAL */}
+          <div style={{ display: "flex", gap: "15px", marginBottom: "15px", alignItems: "flex-end" }}>
             <div style={{ flex: 1 }}>
               <label style={{ display: "block", color: "#9ca3af", marginBottom: "5px" }}>Títol Global del Vídeo:</label>
-              <input type="text" value={topTitol} onChange={e => setTopTitol(e.target.value)} placeholder="Ex: Top 5 Dades curioses" style={{ width: "100%", padding: "12px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "1px solid #555" }} />
+              <div style={{ display: "flex", gap: "10px" }}>
+                <input type="text" value={topTitol} onChange={e => setTopTitol(e.target.value)} placeholder="Ex: Top 5 Dades curioses" style={{ flex: 1, padding: "12px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "1px solid #555" }} />
+                
+                {/* BOTONS TÍTOL GLOBAL */}
+                <button onClick={() => setMostrarEstilGlobal(!mostrarEstilGlobal)} style={{ padding: "0 20px", backgroundColor: mostrarEstilGlobal ? "#6b7280" : "#4b5563", color: "white", border: "none", borderRadius: "6px", cursor: "pointer" }}>
+                  🎨 Modificar text
+                </button>
+                <button onClick={() => previewClipId === 'global' ? tancarPreview() : generarPreviewGlobal(false)} style={{ padding: "0 20px", backgroundColor: previewClipId === 'global' ? "#10b981" : "#3b82f6", color: "white", border: "none", borderRadius: "6px", cursor: "pointer" }}>
+                  {previewClipId === 'global' ? "👁️ Ocultar" : "👁️ Ver Títol"}
+                </button>
+              </div>
             </div>
             <div>
               <label style={{ display: "block", color: "#9ca3af", marginBottom: "5px" }}>Arxiu final (.mp4):</label>
@@ -271,99 +333,155 @@ function App() {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: "30px", alignItems: "flex-start" }}>
-            
-            {/* COLUMNA ESQUERRA: LLISTA DE CLIPS I ESTIL (Ocupa el 100% si la preview està tancada) */}
-            <div style={{ flex: 1.2 }}>
-              <div style={{ backgroundColor: "#252525", padding: "20px", borderRadius: "12px", marginBottom: "30px", border: "1px solid #444" }}>
-                <h3 style={{ margin: "0 0 15px 0", color: "#eab308" }}>🎨 Estil i Plantilla</h3>
-                <div style={{ display: "flex", gap: "15px", flexWrap: "wrap", alignItems: "center" }}>
+          {/* DESPLEGABLE ESTIL TÍTOL GLOBAL (Amb X i Y) */}
+          {mostrarEstilGlobal && (
+            <div style={{ backgroundColor: "#252525", padding: "20px", borderRadius: "12px", marginBottom: "30px", border: "1px dashed #eab308" }}>
+              <h4 style={{ margin: "0 0 15px 0", color: "#eab308" }}>🎨 Edició Títol Global</h4>
+              <div style={{ display: "flex", gap: "15px", flexWrap: "wrap", alignItems: "center" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", color: "#9ca3af" }}>Font:</label>
+                  <select value={estilGlobal.font} onChange={e => setEstilGlobal({...estilGlobal, font: e.target.value})} style={{ padding: "8px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "none" }}>
+                    <option value="Arial">Arial</option> <option value="Verdana">Verdana</option> <option value="Impact">Impact</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", color: "#9ca3af" }}>Color Text:</label>
+                  <input type="color" value={estilGlobal.color} onChange={e => setEstilGlobal({...estilGlobal, color: e.target.value})} style={{ padding: "0", cursor: "pointer", height: "35px", width: "40px", border: "none" }} />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", color: "#9ca3af" }}>Color Vora:</label>
+                  <input type="color" value={estilGlobal.stroke_color} onChange={e => setEstilGlobal({...estilGlobal, stroke_color: e.target.value})} style={{ padding: "0", cursor: "pointer", height: "35px", width: "40px", border: "none" }} />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", color: "#9ca3af" }}>Gruix Vora:</label>
+                  <input type="number" min="0" value={estilGlobal.stroke_width} onChange={e => setEstilGlobal({...estilGlobal, stroke_width: parseInt(e.target.value) || 0})} style={{ width: "60px", padding: "8px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "none" }} />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", color: "#9ca3af" }}>Mida:</label>
+                  <input type="number" value={estilGlobal.font_size} onChange={e => setEstilGlobal({...estilGlobal, font_size: parseInt(e.target.value) || 10})} style={{ width: "70px", padding: "8px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "none" }} />
+                </div>
+                
+                {/* NOU: DESPLEGABLE X I MINI SLIDER Y */}
+                <div style={{ borderLeft: "1px solid #444", paddingLeft: "15px", display: "flex", gap: "15px" }}>
                   <div>
-                    <label style={{ display: "block", fontSize: "0.8rem", color: "#9ca3af" }}>Font:</label>
-                    <select value={estilText.font} onChange={e => setEstilText({...estilText, font: e.target.value})} style={{ padding: "10px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "1px solid #555" }}>
-                      <option value="Arial">Arial</option>
-                      <option value="Verdana">Verdana</option>
-                      <option value="Courier">Courier</option>
-                      <option value="Impact">Impact</option>
+                    <label style={{ display: "block", fontSize: "0.8rem", color: "#eab308" }}>Pos X:</label>
+                    <select value={estilGlobal.pos_x} onChange={e => setEstilGlobal({...estilGlobal, pos_x: e.target.value})} style={{ padding: "8px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "1px solid #eab308" }}>
+                      <option value="left">Esquerra</option>
+                      <option value="center">Centre</option>
+                      <option value="right">Dreta</option>
                     </select>
                   </div>
                   <div>
-                    <label style={{ display: "block", fontSize: "0.8rem", color: "#9ca3af" }}>Color Lletra:</label>
-                    <input type="color" value={estilText.color} onChange={e => setEstilText({...estilText, color: e.target.value})} style={{ padding: "0", cursor: "pointer", height: "40px", width: "40px", border: "none", borderRadius: "4px" }} />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", fontSize: "0.8rem", color: "#9ca3af" }}>Color Vora:</label>
-                    <input type="color" value={estilText.stroke_color} onChange={e => setEstilText({...estilText, stroke_color: e.target.value})} style={{ padding: "0", cursor: "pointer", height: "40px", width: "40px", border: "none", borderRadius: "4px" }} />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", fontSize: "0.8rem", color: "#9ca3af" }}>Gruix Vora:</label>
-                    <input type="number" min="0" value={estilText.stroke_width} onChange={e => setEstilText({...estilText, stroke_width: parseInt(e.target.value) || 0})} style={{ width: "60px", padding: "10px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "1px solid #555" }} />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", fontSize: "0.8rem", color: "#9ca3af" }}>Mida:</label>
-                    <input type="number" value={estilText.font_size} onChange={e => setEstilText({...estilText, font_size: parseInt(e.target.value) || 10})} style={{ width: "70px", padding: "10px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "1px solid #555" }} />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", fontSize: "0.8rem", color: "#9ca3af" }}>Posició Y (Amunt/Avall):</label>
-                    <input type="number" value={estilText.pos_y} onChange={e => setEstilText({...estilText, pos_y: parseInt(e.target.value) || 0})} style={{ width: "80px", padding: "10px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "1px solid #555" }} />
+                    <label style={{ display: "block", fontSize: "0.8rem", color: "#eab308" }}>Pos Y ({estilGlobal.pos_y}px):</label>
+                    <input type="range" min="0" max="300" step="10" value={estilGlobal.pos_y} onChange={e => setEstilGlobal({...estilGlobal, pos_y: parseInt(e.target.value) || 0})} style={{ cursor: "pointer", marginTop: "8px" }} />
                   </div>
                 </div>
+                {/* 👇 ENGANXA LA MODIFICACIÓ C JUST AQUÍ (LA TEVA LÍNIA 379 BUIDA) 👇 */}
+            <div style={{ borderLeft: "1px solid #444", paddingLeft: "15px", marginLeft: "15px", display: "flex", gap: "15px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.8rem", color: "#60a5fa" }}>Llista Pos X:</label>
+                <input type="number" value={estilGlobal.list_x} onChange={e => setEstilGlobal({...estilGlobal, list_x: parseInt(e.target.value) || 0})} style={{ width: "70px", padding: "8px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "1px solid #60a5fa" }} />
               </div>
+              <div>
+                <label style={{ display: "block", fontSize: "0.8rem", color: "#60a5fa" }}>Llista Inici Y:</label>
+                <input type="number" value={estilGlobal.list_start_y} onChange={e => setEstilGlobal({...estilGlobal, list_start_y: parseInt(e.target.value) || 0})} style={{ width: "70px", padding: "8px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "1px solid #60a5fa" }} />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "0.8rem", color: "#60a5fa" }}>Separació Y:</label>
+                <input type="number" value={estilGlobal.list_gap_y} onChange={e => setEstilGlobal({...estilGlobal, list_gap_y: parseInt(e.target.value) || 0})} style={{ width: "70px", padding: "8px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "1px solid #60a5fa" }} />
+              </div>
+            </div>
+            {/* 👆 FINS AQUÍ 👆 */}
+              </div>
+            </div>
+          )}
 
+          <hr style={{ borderColor: "#333", margin: "30px 0" }}/>
+
+          <div style={{ display: "flex", gap: "30px", alignItems: "flex-start" }}>
+            
+            {/* COLUMNA ESQUERRA: LLISTA DE CLIPS (Ara cadascú té el seu estil) */}
+            <div style={{ flex: 1.2 }}>
               <div style={{ backgroundColor: "#2d2d2d", padding: "20px", borderRadius: "12px", marginBottom: "30px" }}>
                 <h3 style={{ margin: "0 0 20px 0" }}>Llista de Clips</h3>
+                
                 {topClips.map((clip, index) => (
-                  <div key={clip.id} style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "15px", backgroundColor: previewClipId === clip.id ? "#374151" : "#1a1a1a", padding: "10px", borderRadius: "8px", border: previewClipId === clip.id ? "1px solid #3b82f6" : "1px solid transparent" }}>
+                  <div key={clip.id} style={{ marginBottom: "15px", backgroundColor: previewClipId === clip.id ? "#374151" : "#1a1a1a", borderRadius: "8px", border: previewClipId === clip.id ? "1px solid #3b82f6" : "1px solid transparent" }}>
                     
-                    <div style={{ width: "50px" }}>
-                      <label style={{ fontSize: "0.8rem", color: "#9ca3af" }}>Pos</label>
-                      <input type="number" value={clip.posicio} onChange={e => actualitzarSlot(clip.id, "posicio", parseInt(e.target.value) || 0)} style={{ width: "100%", padding: "8px", borderRadius: "4px", border: "1px solid #444", backgroundColor: "#333", color: "white" }} />
-                    </div>
-                    
-                    <div style={{ width: "140px" }}>
-                      <label style={{ fontSize: "0.8rem", color: "#9ca3af" }}>Vídeo Arrel</label>
-                      <select value={clip.arxiu} onChange={e => actualitzarSlot(clip.id, "arxiu", e.target.value)} style={{ width: "100%", padding: "8px", borderRadius: "4px", border: "1px solid #444", backgroundColor: "#333", color: "white" }}>
-                        <option value="">Tria...</option>
-                        {carpetaActual === "" && arxius.map(a => <option key={a} value={a}>{a}</option>)}
-                      </select>
-                    </div>
-                    
-                    <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: "0.8rem", color: "#9ca3af" }}>Subtítol Únic</label>
-                      <input type="text" value={clip.subtitol} onChange={e => actualitzarSlot(clip.id, "subtitol", e.target.value)} placeholder="Text centrat..." style={{ width: "100%", padding: "8px", borderRadius: "4px", border: "1px solid #444", backgroundColor: "#333", color: "white" }} />
+                    {/* FILA PRINCIPAL DEL CLIP */}
+                    <div style={{ display: "flex", gap: "10px", alignItems: "center", padding: "10px" }}>
+                      <div style={{ width: "50px" }}>
+                        <input type="number" value={clip.posicio} onChange={e => actualitzarSlot(clip.id, "posicio", parseInt(e.target.value) || 0)} style={{ width: "100%", padding: "8px", borderRadius: "4px", border: "1px solid #444", backgroundColor: "#333", color: "white" }} title="Posició" />
+                      </div>
+                      <div style={{ width: "140px" }}>
+                        <select value={clip.arxiu} onChange={e => actualitzarSlot(clip.id, "arxiu", e.target.value)} style={{ width: "100%", padding: "8px", borderRadius: "4px", border: "1px solid #444", backgroundColor: "#333", color: "white" }}>
+                          <option value="">Vídeo...</option>
+                          {carpetaActual === "" && arxius.map(a => <option key={a} value={a}>{a}</option>)}
+                        </select>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <input type="text" value={clip.subtitol} onChange={e => actualitzarSlot(clip.id, "subtitol", e.target.value)} placeholder="Subtítol del clip..." style={{ width: "100%", padding: "8px", borderRadius: "4px", border: "1px solid #444", backgroundColor: "#333", color: "white" }} />
+                      </div>
+
+                      {/* BOTONS DEL CLIP */}
+                      <button onClick={() => actualitzarSlot(clip.id, "mostrarEstil", !clip.mostrarEstil)} style={{ padding: "8px 12px", backgroundColor: clip.mostrarEstil ? "#6b7280" : "#4b5563", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}>
+                        🎨 Modificar
+                      </button>
+                      <button onClick={() => previewClipId === clip.id ? tancarPreview() : generarPreviewClip(clip, false)} style={{ padding: "8px 12px", backgroundColor: previewClipId === clip.id ? "#10b981" : "#3b82f6", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}>
+                        {previewClipId === clip.id ? "👁️ Ocultar" : "👁️ Ver"}
+                      </button>
+                      <button onClick={() => treureSlot(clip.id)} style={{ padding: "8px 12px", backgroundColor: "#ef4444", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}>X</button>
                     </div>
 
-                    <button 
-                      onClick={() => previewClipId === clip.id ? tancarPreview() : generarPreview(clip, false)} 
-                      style={{ alignSelf: "flex-end", padding: "8px 12px", backgroundColor: previewClipId === clip.id ? "#10b981" : "#3b82f6", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
-                    >
-                      {previewClipId === clip.id ? "👁️ Ocultar" : "👁️ Ver"}
-                    </button>
-                    <button onClick={() => treureSlot(clip.id)} style={{ alignSelf: "flex-end", padding: "8px 12px", backgroundColor: "#ef4444", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}>X</button>
+                    {/* DESPLEGABLE ESTIL DEL CLIP (Sense posicions X/Y) */}
+                    {clip.mostrarEstil && (
+                      <div style={{ backgroundColor: "#252525", padding: "15px", borderTop: "1px solid #444", display: "flex", gap: "15px", flexWrap: "wrap", alignItems: "center" }}>
+                        <div style={{ fontSize: "0.8rem", color: "#eab308", fontWeight: "bold", marginRight: "10px" }}>Estil Clip {clip.posicio}:</div>
+                        <div>
+                          <label style={{ display: "block", fontSize: "0.75rem", color: "#9ca3af" }}>Font:</label>
+                          <select value={clip.estil.font} onChange={e => actualitzarEstilClip(clip.id, "font", e.target.value)} style={{ padding: "6px", borderRadius: "4px", backgroundColor: "#333", color: "white", border: "none" }}>
+                            <option value="Arial">Arial</option> <option value="Verdana">Verdana</option> <option value="Impact">Impact</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ display: "block", fontSize: "0.75rem", color: "#9ca3af" }}>Text:</label>
+                          <input type="color" value={clip.estil.color} onChange={e => actualitzarEstilClip(clip.id, "color", e.target.value)} style={{ padding: "0", cursor: "pointer", height: "30px", width: "35px", border: "none" }} />
+                        </div>
+                        <div>
+                          <label style={{ display: "block", fontSize: "0.75rem", color: "#9ca3af" }}>Vora:</label>
+                          <input type="color" value={clip.estil.stroke_color} onChange={e => actualitzarEstilClip(clip.id, "stroke_color", e.target.value)} style={{ padding: "0", cursor: "pointer", height: "30px", width: "35px", border: "none" }} />
+                        </div>
+                        <div>
+                          <label style={{ display: "block", fontSize: "0.75rem", color: "#9ca3af" }}>Gruix:</label>
+                          <input type="number" min="0" value={clip.estil.stroke_width} onChange={e => actualitzarEstilClip(clip.id, "stroke_width", parseInt(e.target.value) || 0)} style={{ width: "50px", padding: "6px", borderRadius: "4px", backgroundColor: "#333", color: "white", border: "none" }} />
+                        </div>
+                        <div>
+                          <label style={{ display: "block", fontSize: "0.75rem", color: "#9ca3af" }}>Mida:</label>
+                          <input type="number" value={clip.estil.font_size} onChange={e => actualitzarEstilClip(clip.id, "font_size", parseInt(e.target.value) || 10)} style={{ width: "60px", padding: "6px", borderRadius: "4px", backgroundColor: "#333", color: "white", border: "none" }} />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
                 <button onClick={afegirSlotClip} style={{ padding: "10px 20px", backgroundColor: "#4b5563", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "bold" }}>+ Afegir Slot Buit</button>
               </div>
             </div>
 
-            {/* COLUMNA DRETA: ZONA DE LA PREVIEW FORÇADA A 9:16 (Oculta per defecte) */}
+            {/* COLUMNA DRETA: ZONA DE LA PREVIEW FORÇADA A 9:16 */}
             {(previewSrc || carregantPreview) && (
               <div style={{ flex: 0.8, position: "sticky", top: "20px", display: "flex", flexDirection: "column", alignItems: "center" }}>
-                {carregantPreview && !previewSrc && <p style={{ color: "#60a5fa", textAlign: "center", width: "100%", marginBottom: "15px" }}>⏳ Carregant imatge base...</p>}
+                {carregantPreview && !previewSrc && <p style={{ color: "#60a5fa", textAlign: "center", width: "100%", marginBottom: "15px" }}>⏳ Carregant preview...</p>}
                 
                 {previewSrc && (
                   <div style={{ backgroundColor: "#2d2d2d", padding: "20px", borderRadius: "12px", textAlign: "center", width: "100%" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" }}>
-                      <h3 style={{ margin: 0, fontSize: "1rem" }}>📱 Preview 9:16</h3>
-                      <button onClick={tancarPreview} style={{ background: "none", border: "none", color: "#9ca3af", cursor: "pointer", fontSize: "1.2rem", padding: "0 5px" }} title="Tancar Previsualització">
-                        ✖
-                      </button>
+                      <h3 style={{ margin: 0, fontSize: "1rem" }}>📱 Preview {previewClipId === 'global' ? "(Títol)" : "(Clip)"}</h3>
+                      <button onClick={tancarPreview} style={{ background: "none", border: "none", color: "#9ca3af", cursor: "pointer", fontSize: "1.2rem" }}>✖</button>
                     </div>
                     
                     <div style={{ width: "100%", aspectRatio: "9/16", backgroundColor: "black", borderRadius: "8px", border: "2px solid #eab308", display: "flex", justifyContent: "center", alignItems: "center", overflow: "hidden" }}>
                       <img src={previewSrc} alt="Preview" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
                     </div>
-                    <p style={{ fontSize: "0.8rem", color: "#9ca3af", marginTop: "10px", marginBottom: 0 }}>*Centrat automàtic aplicat</p>
                   </div>
                 )}
               </div>

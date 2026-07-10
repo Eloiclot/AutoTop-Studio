@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, ImageClip
+
 # --- CONFIGURACIÓ IMAGEMAGICK ---
 os.environ["IMAGEMAGICK_BINARY"] = r"C:\Program Files\ImageMagick-7.1.2-Q16-HDRI\magick.exe"
 
@@ -50,17 +51,20 @@ class DeleteRequest(BaseModel):
     filename: str
     folder: str
 
-# Model de dades pel nou Creador de Tops
+# Model de dades pel nou Creador de Tops (ACTUALITZAT AMB ESTILS)
 class TopClip(BaseModel):
+    id: int
     posicio: int
     arxiu: str
     subtitol: str
+    estil: dict
 
 class RenderTopRequest(BaseModel):
     titol_global: str
     ordre: str
     clips: list[TopClip]
     output_name: str
+    estil_global: dict
 
 @app.post("/upload")
 async def upload_video(file: UploadFile = File(...)):
@@ -124,16 +128,34 @@ def delete_file(req: DeleteRequest):
     os.remove(file_path)
     return {"status": "success"}
 
-# Model per rebre la configuració de la preview
+# Model per rebre la configuració de la preview amb la llista de Ranking
 class PreviewRequest(BaseModel):
     video_path: str
-    text: str = ""
-    color: str = "white"
-    stroke_color: str = "black"
-    stroke_width: int = 3
-    pos_y: int = 700
-    font_size: int = 70
-    font: str = "Arial"
+    
+    # Text Global
+    global_text: str = ""
+    global_color: str = "white"
+    global_stroke_color: str = "black"
+    global_stroke_width: int = 3
+    global_pos_x: str = "center" 
+    global_pos_y: int = 200
+    global_font_size: int = 80
+    global_font: str = "Arial"
+    
+    # Text Clip
+    clip_text: str = ""
+    clip_color: str = "white"
+    clip_stroke_color: str = "black"
+    clip_stroke_width: int = 3
+    clip_font_size: int = 70
+    clip_font: str = "Arial"
+    
+    # NOU: Configuració de la Llista (Ranking)
+    total_slots: int = 1
+    current_slot: int = 0
+    list_x: int = 100
+    list_start_y: int = 400
+    list_gap_y: int = 100
 
 @app.post("/preview-frame")
 def get_preview_frame(req: PreviewRequest):
@@ -150,14 +172,38 @@ def get_preview_frame(req: PreviewRequest):
         bg_clip = ImageClip(img_temp_path).set_duration(0.1)
         clips_to_composite = [bg_clip]
 
-        if req.text:
-            # Creem el Text amb Vora i Tipografia
-            txt_clip = TextClip(req.text, fontsize=req.font_size, color=req.color, 
-                                font=req.font, stroke_color=req.stroke_color, stroke_width=req.stroke_width)
+        # 1. Renderitzem el Títol Global si hi és
+        if req.global_text:
+            txt_global = TextClip(req.global_text, fontsize=req.global_font_size, color=req.global_color, 
+                                font=req.global_font, stroke_color=req.global_stroke_color, stroke_width=req.global_stroke_width)
+            x_val_global = int(req.global_pos_x) if str(req.global_pos_x).lstrip('-').isdigit() else req.global_pos_x
+            txt_global = txt_global.set_position((x_val_global, req.global_pos_y)).set_duration(0.1)
+            clips_to_composite.append(txt_global)
+
+        # Colors tipus "Ranking" per als números (com a la teva imatge)
+        number_colors = ['red', 'orange', '#3b82f6', 'white', 'yellow', 'magenta']
+
+        # 2. Renderitzem la Llista de Números i el Títol del Clip Actiu
+        for i in range(1, req.total_slots + 1):
+            y_pos = req.list_start_y + ((i - 1) * req.list_gap_y)
+            num_color = number_colors[(i - 1) % len(number_colors)]
             
-            # El centrem horitzontalment i usem la Y global
-            txt_clip = txt_clip.set_position(('center', req.pos_y)).set_duration(0.1)
-            clips_to_composite.append(txt_clip)
+            # Creem el número (ex: "1.")
+            txt_num = TextClip(f"{i}.", fontsize=req.clip_font_size + 15, color=num_color, 
+                               font="Impact", stroke_color="black", stroke_width=req.clip_stroke_width + 1)
+            txt_num = txt_num.set_position((req.list_x, y_pos)).set_duration(0.1)
+            clips_to_composite.append(txt_num)
+
+            # Si és l'slot que estem previsualitzant, hi posem el text al costat
+            if i == req.current_slot and req.clip_text:
+                num_width = txt_num.w
+                offset_x = req.list_x + num_width + 20 # Marge de 20px després del número
+                
+                txt_clip = TextClip(req.clip_text, fontsize=req.clip_font_size, color=req.clip_color, 
+                                    font=req.clip_font, stroke_color=req.clip_stroke_color, stroke_width=req.clip_stroke_width)
+                
+                txt_clip = txt_clip.set_position((offset_x, y_pos + 5)).set_duration(0.1)
+                clips_to_composite.append(txt_clip)
 
         comp = CompositeVideoClip(clips_to_composite)
         final_preview_path = "preview_final.png"
@@ -203,49 +249,86 @@ def renderitzar_top(req: RenderTopRequest):
             clips_data.sort(key=lambda x: x.posicio)
         elif req.ordre == "descendent":
             clips_data.sort(key=lambda x: x.posicio, reverse=True)
-        # Si és manual, els deixem tal qual venen
+            
+        final_clips = []
+        total_slots = len(clips_data)
         
-        video_clips = []
-        textos_clips = []
-        temps_actual = 0
+        # Agafem les posicions de la llista (valors per defecte si fallen)
+        list_x = req.estil_global.get("list_x", 80)
+        list_start_y = req.estil_global.get("list_start_y", 450)
+        list_gap_y = req.estil_global.get("list_gap_y", 110)
         
-        # 2. Carregar cada vídeo i calcular els temps per als textos dinàmics
-        for d in clips_data:
-            ruta_clip = os.path.join(OUTPUT_DIR, d.arxiu)
+        number_colors = ['red', 'orange', '#3b82f6', 'white', 'yellow', 'magenta']
+        
+        for clip_data in clips_data:
+            ruta_clip = os.path.join(OUTPUT_DIR, clip_data.arxiu)
             if not os.path.exists(ruta_clip):
-                raise HTTPException(status_code=404, detail=f"No s'ha trobat l'arxiu {d.arxiu}")
+                raise HTTPException(status_code=404, detail=f"No s'ha trobat l'arxiu {clip_data.arxiu}")
                 
             v_clip = VideoFileClip(ruta_clip)
-            video_clips.append(v_clip)
+            layers = [v_clip]
             
-            # Text dinàmic d'aquest clip (ara el deixem fix al mig perquè no tenim l'escala vertical feta encara)
-            t = TextClip(f"{d.posicio}. {d.subtitol}", fontsize=50, color='yellow')
-            t = t.set_position(('center', 'center')).set_start(temps_actual).set_duration(v_clip.duration)
-            textos_clips.append(t)
+            # Títol Global a cada clip
+            if req.titol_global:
+                txt_global = TextClip(
+                    req.titol_global, 
+                    fontsize=req.estil_global.get("font_size", 80), 
+                    color=req.estil_global.get("color", "white"), 
+                    font=req.estil_global.get("font", "Arial"), 
+                    stroke_color=req.estil_global.get("stroke_color", "black"), 
+                    stroke_width=req.estil_global.get("stroke_width", 3)
+                )
+                pos_x = req.estil_global.get("pos_x", "center")
+                x_val = int(pos_x) if str(pos_x).lstrip('-').isdigit() else pos_x
+                txt_global = txt_global.set_position((x_val, req.estil_global.get("pos_y", 200))).set_duration(v_clip.duration)
+                layers.append(txt_global)
             
-            temps_actual += v_clip.duration
-            
-        # 3. Ajuntar els vídeos
-        video_final = concatenate_videoclips(video_clips)
-        
-        # 4. Text global
-        t_global = TextClip(req.titol_global, fontsize=70, color='white', bg_color='black')
-        t_global = t_global.set_position(('center', 50)).set_duration(video_final.duration)
-        
-        # 5. Composició
-        totes_les_capes = [video_final, t_global] + textos_clips
-        composicio = CompositeVideoClip(totes_les_capes)
-        
-        # 6. Guardar obligatòriament a Tops_Finals
+            # Generem tota la llista de números per aquest clip
+            for i in range(1, total_slots + 1):
+                y_pos = list_start_y + ((i - 1) * list_gap_y)
+                num_color = number_colors[(i - 1) % len(number_colors)]
+                
+                txt_num = TextClip(
+                    f"{i}.", 
+                    fontsize=clip_data.estil.get("font_size", 70) + 15,
+                    color=num_color, 
+                    font="Impact", 
+                    stroke_color="black", 
+                    stroke_width=clip_data.estil.get("stroke_width", 3) + 1
+                )
+                txt_num = txt_num.set_position((list_x, y_pos)).set_duration(v_clip.duration)
+                layers.append(txt_num)
+                
+                # Només posem text si és el número que toca ara
+                if i == clip_data.posicio and clip_data.subtitol:
+                    offset_x = list_x + txt_num.w + 20
+                    txt_clip = TextClip(
+                        clip_data.subtitol, 
+                        fontsize=clip_data.estil.get("font_size", 70), 
+                        color=clip_data.estil.get("color", "white"), 
+                        font=clip_data.estil.get("font", "Arial"), 
+                        stroke_color=clip_data.estil.get("stroke_color", "black"), 
+                        stroke_width=clip_data.estil.get("stroke_width", 3)
+                    )
+                    txt_clip = txt_clip.set_position((offset_x, y_pos + 5)).set_duration(v_clip.duration)
+                    layers.append(txt_clip)
+
+            # Composició final d'aquest fragment
+            comp = CompositeVideoClip(layers)
+            final_clips.append(comp)
+
+        if not final_clips:
+            raise HTTPException(status_code=400, detail="No s'han pogut carregar els clips.")
+
+        video_final = concatenate_videoclips(final_clips, method="compose")
         nom_arxiu = req.output_name if req.output_name.endswith('.mp4') else req.output_name + '.mp4'
         output_path = os.path.join(OUTPUT_DIR, TOPS_DIR, nom_arxiu)
         
-        composicio.write_videofile(output_path, fps=24, codec="libx264", audio_codec="aac")
+        video_final.write_videofile(output_path, fps=30, codec="libx264", audio_codec="aac")
         
-        # Tanquem arxius de memòria
-        for v in video_clips: v.close()
+        for c in final_clips:
+            c.close()
         video_final.close()
-        composicio.close()
         
         return {"status": "success", "file": nom_arxiu}
     except Exception as e:
