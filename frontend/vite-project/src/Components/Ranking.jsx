@@ -1,9 +1,9 @@
 import { useState } from 'react'
 
 export default function Ranking({ 
-  topClips, setTopClips, arxius, carpetaActual, 
+  topClips, setTopClips, totsElsArxius, carpetaActual, 
   previewClipId, setPreviewClipId, estilPerDefecteClip, setPreviewSrc,
-  topTitol, topOrdre, topNomSortida, estilGlobal, carregarExplorador
+  topTitol, topOrdre, ordrePersonalitzat, topNomSortida, estilGlobal, carregarExplorador
 }) {
   const [renderitzantTop, setRenderitzantTop] = useState(false)
   const [missatgeTop, setMissatgeTop] = useState("")
@@ -31,12 +31,24 @@ export default function Ranking({
   const generarTopFinal = async () => {
     if (!topTitol) { setMissatgeTop("❌ Posa-hi un títol global primer."); return; }
     if (topClips.some(c => c.arxiu === "")) { setMissatgeTop("❌ Tens slots sense vídeo assignat."); return; }
+    
+    if (topOrdre === "personalitzat" && !ordrePersonalitzat.trim()) {
+      setMissatgeTop("❌ Has de posar la seqüència (ex: 3,5,1,2,4)"); return;
+    }
+
     let nomFinal = topNomSortida.trim() !== "" ? topNomSortida.trim() : `TOP_${Math.floor(Date.now() / 1000)}`;
     setRenderitzantTop(true); setMissatgeTop("⏳ Muntant el vídeo complet. Això trigarà força...");
     try {
       const res = await fetch("http://localhost:8000/render-top", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ titol_global: topTitol, ordre: topOrdre, clips: topClips, output_name: nomFinal, estil_global: estilGlobal })
+        body: JSON.stringify({ 
+          titol_global: topTitol, 
+          ordre: topOrdre, 
+          ordre_personalitzat: ordrePersonalitzat, 
+          clips: topClips, 
+          output_name: nomFinal, 
+          estil_global: estilGlobal 
+        })
       });
       if (res.ok) { setMissatgeTop(`✅ TOP Generat perfectament a Tops_Finals!`); carregarExplorador(carpetaActual); } 
       else { const err = await res.json(); setMissatgeTop(`❌ ${err.detail}`); }
@@ -55,12 +67,14 @@ export default function Ranking({
             <div style={{ width: "50px" }}>
               <input type="number" value={clip.posicio} onChange={e => actualitzarSlot(clip.id, "posicio", parseInt(e.target.value) || 0)} style={{ width: "100%", padding: "8px", borderRadius: "4px", border: "1px solid #444", backgroundColor: "#333", color: "white" }} title="Posició" />
             </div>
+            
             <div style={{ width: "140px" }}>
               <select value={clip.arxiu} onChange={e => actualitzarSlot(clip.id, "arxiu", e.target.value)} style={{ width: "100%", padding: "8px", borderRadius: "4px", border: "1px solid #444", backgroundColor: "#333", color: "white" }}>
                 <option value="">Vídeo...</option>
-                {carpetaActual === "" && arxius.map(a => <option key={a} value={a}>{a}</option>)}
+                {totsElsArxius.map(a => <option key={a} value={a}>{a}</option>)}
               </select>
             </div>
+            
             <div style={{ flex: 1 }}>
               <input type="text" value={clip.subtitol} onChange={e => actualitzarSlot(clip.id, "subtitol", e.target.value)} placeholder="Subtítol del clip..." style={{ width: "100%", padding: "8px", borderRadius: "4px", border: "1px solid #444", backgroundColor: "#333", color: "white" }} />
             </div>
@@ -117,7 +131,6 @@ export default function Ranking({
       ))}
       <button onClick={afegirSlotClip} style={{ padding: "10px 20px", backgroundColor: "#4b5563", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "bold" }}>+ Afegir Slot Buit</button>
 
-      {/* BOTÓ DE RENDER */}
       <div style={{ textAlign: "center", marginTop: "30px", paddingTop: "25px", borderTop: "1px solid #444" }}>
         <button onClick={generarTopFinal} disabled={renderitzantTop} style={{ width: "100%", padding: "15px 40px", fontSize: "1.3rem", backgroundColor: renderitzantTop ? "#555" : "#eab308", color: renderitzantTop ? "white" : "black", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: "bold" }}>
           {renderitzantTop ? "⚙️ Processant tot l'arxiu..." : "🚀 Generar Top Final"}

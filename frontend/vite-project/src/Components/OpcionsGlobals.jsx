@@ -1,7 +1,10 @@
 import { useState } from 'react'
 
 export default function OpcionsGlobals({ 
-  topTitol, setTopTitol, topOrdre, setTopOrdre, topNomSortida, setTopNomSortida,
+  topTitol, setTopTitol, 
+  topOrdre, setTopOrdre, 
+  ordrePersonalitzat, setOrdrePersonalitzat,
+  topNomSortida, setTopNomSortida,
   estilGlobal, setEstilGlobal
 }) {
   const [mostrarEstilGlobal, setMostrarEstilGlobal] = useState(false)
@@ -20,15 +23,28 @@ export default function OpcionsGlobals({
         </div>
         <div>
           <label style={{ display: "block", color: "#9ca3af", marginBottom: "5px" }}>Ordre:</label>
-          <select value={topOrdre} onChange={e => setTopOrdre(e.target.value)} style={{ width: "120px", padding: "12px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "1px solid #555" }}>
-            <option value="ascendent">Ascendent</option>
-            <option value="descendent">Descendent</option>
-            <option value="aleatori">Aleatori</option>
-          </select>
+          <div style={{ display: "flex", gap: "10px" }}>
+            <select value={topOrdre} onChange={e => setTopOrdre(e.target.value)} style={{ width: "130px", padding: "12px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "1px solid #555" }}>
+              <option value="ascendent">Ascendent</option>
+              <option value="descendent">Descendent</option>
+              <option value="personalitzat">Personalitzat</option>
+            </select>
+            
+            {topOrdre === "personalitzat" && (
+              <input 
+                type="text" 
+                value={ordrePersonalitzat} 
+                onChange={e => setOrdrePersonalitzat(e.target.value)} 
+                placeholder="Ex: 5,4,2,1,3" 
+                title="Introdueix l'ordre desitjat separat per comes"
+                style={{ width: "120px", padding: "12px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "1px solid #555" }} 
+              />
+            )}
+          </div>
         </div>
         <div>
           <label style={{ display: "block", color: "#9ca3af", marginBottom: "5px" }}>Arxiu final (.mp4):</label>
-          <input type="text" value={topNomSortida} onChange={e => setTopNomSortida(e.target.value)} placeholder="video_final" style={{ width: "200px", padding: "12px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "1px solid #555" }} />
+          <input type="text" value={topNomSortida} onChange={e => setTopNomSortida(e.target.value)} placeholder="video_final" style={{ width: "180px", padding: "12px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "1px solid #555" }} />
         </div>
       </div>
 

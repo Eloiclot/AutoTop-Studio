@@ -1,6 +1,5 @@
 import os
 import shutil
-
 import random
 
 # --- PEGAT PER A MOVIEPY I PILLOW 10+ ---
@@ -32,9 +31,8 @@ app.add_middleware(
 
 ASSETS_DIR = "assets"
 OUTPUT_DIR = "output"
-TOPS_DIR = "Tops_Finals" # Carpeta especial
+TOPS_DIR = "Tops_Finals" 
 
-# Creem l'estructura de carpetes a l'inici
 for directory in [ASSETS_DIR, OUTPUT_DIR, os.path.join(OUTPUT_DIR, TOPS_DIR)]:
     if not os.path.exists(directory):
         os.makedirs(directory)
@@ -42,6 +40,9 @@ for directory in [ASSETS_DIR, OUTPUT_DIR, os.path.join(OUTPUT_DIR, TOPS_DIR)]:
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 app.mount("/output", StaticFiles(directory="output"), name="output")
 
+# ==========================================
+# MODELS DE DADES
+# ==========================================
 class RenderRequest(BaseModel):
     video_path: str
     start: float
@@ -68,12 +69,58 @@ class TopClip(BaseModel):
     subtitol: str
     estil: dict
 
+# Actualitzat amb ordre_personalitzat
 class RenderTopRequest(BaseModel):
     titol_global: str
     ordre: str
+    ordre_personalitzat: str = "" 
     clips: list[TopClip]
     output_name: str
     estil_global: dict
+
+# Actualitzat amb ordre i ordre_personalitzat
+class PreviewRequest(BaseModel):
+    video_path: str
+    ordre: str = "ascendent"
+    ordre_personalitzat: str = ""
+    global_text: str = ""
+    global_color: str = "red"
+    global_stroke_color: str = "black"
+    global_stroke_width: int = 5
+    global_pos_x: str = "center" 
+    global_pos_y: int = 200
+    global_font_size: int = 80
+    global_font: str = "Impact"
+    clips: list[TopClip] = []
+    total_slots: int = 1
+    current_slot: int = 0
+    list_x: int = 100
+    list_start_y: int = 400
+    list_gap_y: int = 100
+
+# ==========================================
+# FUNCIÓ AUXILIAR D'ORDENAMENT
+# ==========================================
+def obtenir_sequencia(ordre: str, ordre_pers: str, posicions_existents: list[int]):
+    pos_ordenades = sorted(posicions_existents)
+    if ordre == "ascendent":
+        return pos_ordenades
+    elif ordre == "descendent":
+        return sorted(posicions_existents, reverse=True)
+    elif ordre == "personalitzat":
+        try:
+            # Separem per comes i convertim a números
+            seq = [int(x.strip()) for x in ordre_pers.split(',') if x.strip().isdigit()]
+            # Ens assegurem que només hi hagi posicions que existeixin als clips actuals
+            return [x for x in seq if x in posicions_existents]
+        except:
+            return pos_ordenades
+    return pos_ordenades
+
+
+# ==========================================
+# ENDPOINTS
+# ==========================================
 
 @app.post("/upload")
 async def upload_video(file: UploadFile = File(...)):
@@ -136,24 +183,28 @@ def delete_file(req: DeleteRequest):
     os.remove(file_path)
     return {"status": "success"}
 
-class PreviewRequest(BaseModel):
-    video_path: str
-    global_text: str = ""
-    global_color: str = "red"
-    global_stroke_color: str = "black"
-    global_stroke_width: int = 5
-    global_pos_x: str = "center" 
-    global_pos_y: int = 200
-    global_font_size: int = 80
-    global_font: str = "Impact"
-    
-    clips: list[TopClip] = []
-    
-    total_slots: int = 1
-    current_slot: int = 0
-    list_x: int = 100
-    list_start_y: int = 400
-    list_gap_y: int = 100
+@app.post("/render")
+def renderitzar_clip(request: RenderRequest):
+    if request.folder_name == TOPS_DIR:
+        raise HTTPException(status_code=403, detail="No pots guardar clips solts a la carpeta de Tops.")
+
+    full_path = os.path.join(ASSETS_DIR, request.video_path)
+    if not os.path.exists(full_path):
+        raise HTTPException(status_code=404, detail="El vídeo original no existeix.")
+
+    target_dir = os.path.join(OUTPUT_DIR, request.folder_name) if request.folder_name else OUTPUT_DIR
+    os.makedirs(target_dir, exist_ok=True)
+
+    nom_arxiu = request.output_name if request.output_name.endswith('.mp4') else request.output_name + '.mp4'
+    output_path = os.path.join(target_dir, nom_arxiu)
+
+    try:
+        with VideoFileClip(full_path) as clip:
+            new_clip = clip.subclip(request.start, request.end)
+            new_clip.write_videofile(output_path, codec="libx264", audio_codec="aac")
+        return {"status": "success", "file": nom_arxiu}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/preview-frame")
 def get_preview_frame(req: PreviewRequest):
@@ -179,48 +230,55 @@ def get_preview_frame(req: PreviewRequest):
             txt_global = txt_global.set_position((x_val_global, req.global_pos_y)).set_duration(0.1)
             clips_to_composite.append(txt_global)
 
-        # Configuració fixa del Rànquing (Substitueix els controls manuals)
         list_x_fixed = 40
         list_start_y_fixed = 500
         list_gap_y_fixed = 130
 
+        # LÒGICA PER SABER QUÈ S'HA DE VEURE (ACUMULATIU PER PREVIEW)
+        posicions_totals = [c.posicio for c in req.clips]
+        sequencia = obtenir_sequencia(req.ordre, req.ordre_personalitzat, posicions_totals)
+        
+        posicions_visibles = []
+        if req.current_slot in sequencia:
+            idx = sequencia.index(req.current_slot)
+            posicions_visibles = sequencia[:idx + 1] # Els anteriors i l'actual
+        else:
+            posicions_visibles = [req.current_slot]
+
         for i in range(1, req.total_slots + 1):
             y_pos = list_start_y_fixed + ((i - 1) * list_gap_y_fixed)
             
-            # Lògica de colors del Pòdium
             if i == 1:
-                num_color = "#FFE100" # Daurat
+                num_color = "#FFE100" 
             elif i == 2:
-                num_color = "#9E9E9EE7" # Platejat
+                num_color = "#9E9E9EE7" 
             elif i == 3:
-                num_color = "#FF8000" # Bronze
+                num_color = "#FF8000" 
             elif i == req.total_slots:
-                num_color = "#A321FF" # Lila / Púrpura
+                num_color = "#A321FF" 
             elif i%2 == 0:
-                num_color = "#00D0FF" # Lila / Púrpura
+                num_color = "#00D0FF" 
             else:
-                num_color = "white" # La resta
+                num_color = "white" 
             
             clip_i = next((c for c in req.clips if c.posicio == i), None)
             
             stroke_w = clip_i.estil.get("stroke_width", 3) + 1 if clip_i else 4
             f_size = clip_i.estil.get("font_size", 70) + 15 if clip_i else 85
             
-            txt_num = TextClip(f"{i}.", fontsize=f_size, color=num_color, 
-                               font="Impact", stroke_color="black", stroke_width=stroke_w)
+            txt_num = TextClip(f"{i}.", fontsize=f_size, color=num_color, font="Impact", stroke_color="black", stroke_width=stroke_w)
             txt_num = txt_num.set_position((list_x_fixed, y_pos)).set_duration(0.1)
             clips_to_composite.append(txt_num)
 
-            if i <= req.current_slot and clip_i and clip_i.subtitol:
+            # Només es dibuixa el text si aquest slot ja "s'ha mostrat"
+            if i in posicions_visibles and clip_i and clip_i.subtitol:
                 offset_x = list_x_fixed + txt_num.w + 20 
-                
                 txt_clip = TextClip(clip_i.subtitol, 
                                     fontsize=clip_i.estil.get("font_size", 70), 
                                     color=clip_i.estil.get("color", "white"), 
                                     font=clip_i.estil.get("font", "Arial"), 
                                     stroke_color=clip_i.estil.get("stroke_color", "black"), 
                                     stroke_width=clip_i.estil.get("stroke_width", 3))
-                
                 txt_clip = txt_clip.set_position((offset_x, y_pos + 5)).set_duration(0.1)
                 clips_to_composite.append(txt_clip)
 
@@ -239,49 +297,38 @@ def get_preview_frame(req: PreviewRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error generant preview: {str(e)}")
 
-@app.post("/render")
-def renderitzar_clip(request: RenderRequest):
-    if request.folder_name == TOPS_DIR:
-        raise HTTPException(status_code=403, detail="No pots guardar clips solts a la carpeta de Tops.")
-
-    full_path = os.path.join(ASSETS_DIR, request.video_path)
-    if not os.path.exists(full_path):
-        raise HTTPException(status_code=404, detail="El vídeo original no existeix.")
-
-    target_dir = os.path.join(OUTPUT_DIR, request.folder_name) if request.folder_name else OUTPUT_DIR
-    os.makedirs(target_dir, exist_ok=True)
-
-    nom_arxiu = request.output_name if request.output_name.endswith('.mp4') else request.output_name + '.mp4'
-    output_path = os.path.join(target_dir, nom_arxiu)
-
-    try:
-        with VideoFileClip(full_path) as clip:
-            new_clip = clip.subclip(request.start, request.end)
-            new_clip.write_videofile(output_path, codec="libx264", audio_codec="aac")
-        return {"status": "success", "file": nom_arxiu}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/render-top")
 def renderitzar_top(req: RenderTopRequest):
     try:
         clips_data = req.clips
-        if req.ordre == "ascendent":
-            clips_data.sort(key=lambda x: x.posicio)
-        elif req.ordre == "descendent":
-            clips_data.sort(key=lambda x: x.posicio, reverse=True)
-        elif req.ordre == "aleatori":
-            random.shuffle(clips_data)
+        posicions_totals = [c.posicio for c in clips_data]
+        
+        # 1. Obtenim la seqüència exacta a renderitzar
+        sequencia = obtenir_sequencia(req.ordre, req.ordre_personalitzat, posicions_totals)
+        
+        if not sequencia:
+            raise HTTPException(status_code=400, detail="Seqüència invàlida. Revisa l'ordre personalitzat.")
+
+        # 2. Ordenem l'array de clips per fer-lo coincidir amb la seqüència
+        clips_ordenats = []
+        for p in sequencia:
+            c = next((clip for clip in clips_data if clip.posicio == p), None)
+            if c: clips_ordenats.append(c)
             
         final_clips = []
         total_slots = len(clips_data)
         
-        # Configuració fixa del Rànquing (Substitueix els controls manuals)
         list_x_fixed = 30
         list_start_y_fixed = 500
         list_gap_y_fixed = 130
         
-        for clip_data in clips_data:
+        posicions_visibles = [] # Aquesta llista actuarà de "memòria"
+        
+        for clip_data in clips_ordenats:
+            # Afegim el clip actual a la memòria. Així es quedarà fixat per la resta del vídeo.
+            posicions_visibles.append(clip_data.posicio)
+            
             ruta_clip = os.path.join(OUTPUT_DIR, clip_data.arxiu)
             if not os.path.exists(ruta_clip):
                 raise HTTPException(status_code=404, detail=f"No s'ha trobat l'arxiu {clip_data.arxiu}")
@@ -309,22 +356,23 @@ def renderitzar_top(req: RenderTopRequest):
                 txt_global = txt_global.set_position((x_val, req.estil_global.get("pos_y", 200))).set_duration(v_clip_final.duration)
                 layers.append(txt_global)
             
+            # Repassem TOTS els slots possibles
             for i in range(1, total_slots + 1):
                 y_pos = list_start_y_fixed + ((i - 1) * list_gap_y_fixed)
                 
-                # Lògica de colors del Pòdium
-            if i == 1:
-                num_color = "#FFE100" # Daurat
-            elif i == 2:
-                num_color = "#9E9E9EE7" # Platejat
-            elif i == 3:
-                num_color = "#FF8000" # Bronze
-            elif i == req.total_slots:
-                num_color = "#A321FF" # Lila / Púrpura
-            elif i%2 == 0:
-                num_color = "#00D0FF" # Lila / Púrpura
-            else:
-                num_color = "white" # La resta
+                # He corregit la tabulació dels colors que es va trencar a la versió anterior
+                if i == 1:
+                    num_color = "#FFE100" 
+                elif i == 2:
+                    num_color = "#9E9E9EE7" 
+                elif i == 3:
+                    num_color = "#FF8000" 
+                elif i == total_slots:
+                    num_color = "#A321FF" 
+                elif i%2 == 0:
+                    num_color = "#00D0FF" 
+                else:
+                    num_color = "white" 
                 
                 clip_i = next((c for c in clips_data if c.posicio == i), None)
                 
@@ -335,7 +383,8 @@ def renderitzar_top(req: RenderTopRequest):
                 txt_num = txt_num.set_position((list_x_fixed, y_pos)).set_duration(v_clip_final.duration)
                 layers.append(txt_num)
                 
-                if i <= clip_data.posicio and clip_i and clip_i.subtitol:
+                # La màgia: només hi escrivim el text si ja hem passat per aquest clip en la línia de temps
+                if i in posicions_visibles and clip_i and clip_i.subtitol:
                     offset_x = list_x_fixed + txt_num.w + 20
                     txt_clip = TextClip(
                         clip_i.subtitol, 
@@ -358,7 +407,7 @@ def renderitzar_top(req: RenderTopRequest):
         nom_arxiu = req.output_name if req.output_name.endswith('.mp4') else req.output_name + '.mp4'
         output_path = os.path.join(OUTPUT_DIR, TOPS_DIR, nom_arxiu)
         
-        video_final.write_videofile(output_path, fps=30, codec="libx264", audio_codec="aac")
+        video_final.write_videofile(output_path, fps=30, codec="libx264", audio_codec="aac",threads=8,preset="ultrafast")
         
         for c in final_clips:
             c.close()
