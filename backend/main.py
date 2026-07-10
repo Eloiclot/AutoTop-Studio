@@ -1,6 +1,8 @@
 import os
 import shutil
 
+import random
+
 # --- PEGAT PER A MOVIEPY I PILLOW 10+ ---
 import PIL.Image
 if not hasattr(PIL.Image, 'ANTIALIAS'):
@@ -12,8 +14,6 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-
-# AFEGITS IMPORTANTS: ColorClip i vfx per poder reescalar sense que peti
 from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, ImageClip, ColorClip
 import moviepy.video.fx.all as vfx
 
@@ -139,13 +139,13 @@ def delete_file(req: DeleteRequest):
 class PreviewRequest(BaseModel):
     video_path: str
     global_text: str = ""
-    global_color: str = "white"
+    global_color: str = "red"
     global_stroke_color: str = "black"
-    global_stroke_width: int = 3
+    global_stroke_width: int = 5
     global_pos_x: str = "center" 
     global_pos_y: int = 200
     global_font_size: int = 80
-    global_font: str = "Arial"
+    global_font: str = "Impact"
     
     clips: list[TopClip] = []
     
@@ -162,19 +162,14 @@ def get_preview_frame(req: PreviewRequest):
         raise HTTPException(status_code=404, detail="Vídeo no trobat a la carpeta output")
 
     try:
-        # 1. Traiem el fotograma directament de l'arxiu original (és més ràpid que escalar el vídeo sencer)
         clip = VideoFileClip(video_path)
         img_temp_path = "preview_bg_temp.png"
         clip.save_frame(img_temp_path, t=0)
         clip.close() 
         
-        # 2. Creem un fons 1080x1920 negre pur
         bg_base = ColorClip(size=(1080, 1920), color=(0,0,0)).set_duration(0.1)
-        
-        # 3. Carreguem el fotograma com a imatge, EL REESCALEM a 1080 i el centrem
         bg_video_frame = ImageClip(img_temp_path).fx(vfx.resize, width=1080).set_position("center").set_duration(0.1)
         
-        # Aquesta és la base sobre la qual s'apilaran els textos
         clips_to_composite = [bg_base, bg_video_frame]
 
         if req.global_text:
@@ -184,11 +179,27 @@ def get_preview_frame(req: PreviewRequest):
             txt_global = txt_global.set_position((x_val_global, req.global_pos_y)).set_duration(0.1)
             clips_to_composite.append(txt_global)
 
-        number_colors = ['red', 'orange', '#3b82f6', 'white', 'yellow', 'magenta']
+        # Configuració fixa del Rànquing (Substitueix els controls manuals)
+        list_x_fixed = 40
+        list_start_y_fixed = 500
+        list_gap_y_fixed = 130
 
         for i in range(1, req.total_slots + 1):
-            y_pos = req.list_start_y + ((i - 1) * req.list_gap_y)
-            num_color = number_colors[(i - 1) % len(number_colors)]
+            y_pos = list_start_y_fixed + ((i - 1) * list_gap_y_fixed)
+            
+            # Lògica de colors del Pòdium
+            if i == 1:
+                num_color = "#FFE100" # Daurat
+            elif i == 2:
+                num_color = "#9E9E9EE7" # Platejat
+            elif i == 3:
+                num_color = "#FF8000" # Bronze
+            elif i == req.total_slots:
+                num_color = "#A321FF" # Lila / Púrpura
+            elif i%2 == 0:
+                num_color = "#00D0FF" # Lila / Púrpura
+            else:
+                num_color = "white" # La resta
             
             clip_i = next((c for c in req.clips if c.posicio == i), None)
             
@@ -197,11 +208,11 @@ def get_preview_frame(req: PreviewRequest):
             
             txt_num = TextClip(f"{i}.", fontsize=f_size, color=num_color, 
                                font="Impact", stroke_color="black", stroke_width=stroke_w)
-            txt_num = txt_num.set_position((req.list_x, y_pos)).set_duration(0.1)
+            txt_num = txt_num.set_position((list_x_fixed, y_pos)).set_duration(0.1)
             clips_to_composite.append(txt_num)
 
             if i <= req.current_slot and clip_i and clip_i.subtitol:
-                offset_x = req.list_x + txt_num.w + 20 
+                offset_x = list_x_fixed + txt_num.w + 20 
                 
                 txt_clip = TextClip(clip_i.subtitol, 
                                     fontsize=clip_i.estil.get("font_size", 70), 
@@ -213,7 +224,6 @@ def get_preview_frame(req: PreviewRequest):
                 txt_clip = txt_clip.set_position((offset_x, y_pos + 5)).set_duration(0.1)
                 clips_to_composite.append(txt_clip)
 
-        # Forcem el render de la imatge a 1080x1920
         comp = CompositeVideoClip(clips_to_composite, size=(1080, 1920))
         final_preview_path = "preview_final.png"
         comp.save_frame(final_preview_path, t=0)
@@ -226,7 +236,7 @@ def get_preview_frame(req: PreviewRequest):
 
     except Exception as e:
         import traceback
-        traceback.print_exc() # Aquesta és la línia màgica per veure on peta
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error generant preview: {str(e)}")
 
 @app.post("/render")
@@ -260,33 +270,30 @@ def renderitzar_top(req: RenderTopRequest):
             clips_data.sort(key=lambda x: x.posicio)
         elif req.ordre == "descendent":
             clips_data.sort(key=lambda x: x.posicio, reverse=True)
+        elif req.ordre == "aleatori":
+            random.shuffle(clips_data)
             
         final_clips = []
         total_slots = len(clips_data)
         
-        list_x = req.estil_global.get("list_x", 80)
-        list_start_y = req.estil_global.get("list_start_y", 450)
-        list_gap_y = req.estil_global.get("list_gap_y", 110)
-        
-        number_colors = ['red', 'orange', '#3b82f6', 'white', 'yellow', 'magenta']
+        # Configuració fixa del Rànquing (Substitueix els controls manuals)
+        list_x_fixed = 30
+        list_start_y_fixed = 500
+        list_gap_y_fixed = 130
         
         for clip_data in clips_data:
             ruta_clip = os.path.join(OUTPUT_DIR, clip_data.arxiu)
             if not os.path.exists(ruta_clip):
                 raise HTTPException(status_code=404, detail=f"No s'ha trobat l'arxiu {clip_data.arxiu}")
                 
-            # --- INICI ZONA DE FORMAT 9:16 ---
             v_clip_original = VideoFileClip(ruta_clip)
-            # Reescalem a amplada completa 1080p usant vfx.resize correctament
             v_clip_resized = v_clip_original.fx(vfx.resize, width=1080)
-            # Centrem dins un llenç negre pur de resolució vertical
             v_clip_final = CompositeVideoClip(
                 [v_clip_resized.set_position("center")], 
                 size=(1080, 1920)
             ).set_duration(v_clip_original.duration)
             
             layers = [v_clip_final]
-            # --- FI ZONA DE FORMAT 9:16 ---
             
             if req.titol_global:
                 txt_global = TextClip(
@@ -303,8 +310,21 @@ def renderitzar_top(req: RenderTopRequest):
                 layers.append(txt_global)
             
             for i in range(1, total_slots + 1):
-                y_pos = list_start_y + ((i - 1) * list_gap_y)
-                num_color = number_colors[(i - 1) % len(number_colors)]
+                y_pos = list_start_y_fixed + ((i - 1) * list_gap_y_fixed)
+                
+                # Lògica de colors del Pòdium
+            if i == 1:
+                num_color = "#FFE100" # Daurat
+            elif i == 2:
+                num_color = "#9E9E9EE7" # Platejat
+            elif i == 3:
+                num_color = "#FF8000" # Bronze
+            elif i == req.total_slots:
+                num_color = "#A321FF" # Lila / Púrpura
+            elif i%2 == 0:
+                num_color = "#00D0FF" # Lila / Púrpura
+            else:
+                num_color = "white" # La resta
                 
                 clip_i = next((c for c in clips_data if c.posicio == i), None)
                 
@@ -312,11 +332,11 @@ def renderitzar_top(req: RenderTopRequest):
                 f_size = clip_i.estil.get("font_size", 70) + 15 if clip_i else 85
                 
                 txt_num = TextClip(f"{i}.", fontsize=f_size, color=num_color, font="Impact", stroke_color="black", stroke_width=stroke_w)
-                txt_num = txt_num.set_position((list_x, y_pos)).set_duration(v_clip_final.duration)
+                txt_num = txt_num.set_position((list_x_fixed, y_pos)).set_duration(v_clip_final.duration)
                 layers.append(txt_num)
                 
                 if i <= clip_data.posicio and clip_i and clip_i.subtitol:
-                    offset_x = list_x + txt_num.w + 20
+                    offset_x = list_x_fixed + txt_num.w + 20
                     txt_clip = TextClip(
                         clip_i.subtitol, 
                         fontsize=clip_i.estil.get("font_size", 70), 
@@ -328,7 +348,6 @@ def renderitzar_top(req: RenderTopRequest):
                     txt_clip = txt_clip.set_position((offset_x, y_pos + 5)).set_duration(v_clip_final.duration)
                     layers.append(txt_clip)
 
-            # Assignem mida a la composició perquè MoviePy no es confongui
             comp = CompositeVideoClip(layers, size=(1080, 1920))
             final_clips.append(comp)
 
@@ -347,4 +366,6 @@ def renderitzar_top(req: RenderTopRequest):
         
         return {"status": "success", "file": nom_arxiu}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
