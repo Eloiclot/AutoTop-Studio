@@ -51,7 +51,6 @@ class DeleteRequest(BaseModel):
     filename: str
     folder: str
 
-# Model de dades pel nou Creador de Tops (ACTUALITZAT AMB ESTILS)
 class TopClip(BaseModel):
     id: int
     posicio: int
@@ -101,7 +100,6 @@ def create_folder(req: FolderRequest):
 
 @app.post("/move-file")
 def move_file(req: MoveRequest):
-    # PROTECCIÓ DE LA CARPETA DE TOPS
     if req.new_folder == TOPS_DIR or req.current_folder == TOPS_DIR:
         raise HTTPException(status_code=403, detail="No es poden moure arxius cap a o des de la carpeta Tops_Finals.")
 
@@ -128,11 +126,8 @@ def delete_file(req: DeleteRequest):
     os.remove(file_path)
     return {"status": "success"}
 
-# Model per rebre la configuració de la preview amb la llista de Ranking
 class PreviewRequest(BaseModel):
     video_path: str
-    
-    # Text Global
     global_text: str = ""
     global_color: str = "white"
     global_stroke_color: str = "black"
@@ -142,15 +137,8 @@ class PreviewRequest(BaseModel):
     global_font_size: int = 80
     global_font: str = "Arial"
     
-    # Text Clip
-    clip_text: str = ""
-    clip_color: str = "white"
-    clip_stroke_color: str = "black"
-    clip_stroke_width: int = 3
-    clip_font_size: int = 70
-    clip_font: str = "Arial"
+    clips: list[TopClip] = []
     
-    # NOU: Configuració de la Llista (Ranking)
     total_slots: int = 1
     current_slot: int = 0
     list_x: int = 100
@@ -172,7 +160,6 @@ def get_preview_frame(req: PreviewRequest):
         bg_clip = ImageClip(img_temp_path).set_duration(0.1)
         clips_to_composite = [bg_clip]
 
-        # 1. Renderitzem el Títol Global si hi és
         if req.global_text:
             txt_global = TextClip(req.global_text, fontsize=req.global_font_size, color=req.global_color, 
                                 font=req.global_font, stroke_color=req.global_stroke_color, stroke_width=req.global_stroke_width)
@@ -180,27 +167,34 @@ def get_preview_frame(req: PreviewRequest):
             txt_global = txt_global.set_position((x_val_global, req.global_pos_y)).set_duration(0.1)
             clips_to_composite.append(txt_global)
 
-        # Colors tipus "Ranking" per als números (com a la teva imatge)
         number_colors = ['red', 'orange', '#3b82f6', 'white', 'yellow', 'magenta']
 
-        # 2. Renderitzem la Llista de Números i el Títol del Clip Actiu
         for i in range(1, req.total_slots + 1):
             y_pos = req.list_start_y + ((i - 1) * req.list_gap_y)
             num_color = number_colors[(i - 1) % len(number_colors)]
             
-            # Creem el número (ex: "1.")
-            txt_num = TextClip(f"{i}.", fontsize=req.clip_font_size + 15, color=num_color, 
-                               font="Impact", stroke_color="black", stroke_width=req.clip_stroke_width + 1)
+            # Busquem si aquest número de la llista té algun clip assignat i l'extraiem
+            clip_i = next((c for c in req.clips if c.posicio == i), None)
+            
+            # Formatem el número amb l'estil del clip si en té (si no, amb uns per defecte)
+            stroke_w = clip_i.estil.get("stroke_width", 3) + 1 if clip_i else 4
+            f_size = clip_i.estil.get("font_size", 70) + 15 if clip_i else 85
+            
+            txt_num = TextClip(f"{i}.", fontsize=f_size, color=num_color, 
+                               font="Impact", stroke_color="black", stroke_width=stroke_w)
             txt_num = txt_num.set_position((req.list_x, y_pos)).set_duration(0.1)
             clips_to_composite.append(txt_num)
 
-            # Si és l'slot que estem previsualitzant, hi posem el text al costat
-            if i == req.current_slot and req.clip_text:
-                num_width = txt_num.w
-                offset_x = req.list_x + num_width + 20 # Marge de 20px després del número
+            # Si el clip és igual o anterior a l'actual (persistència), li posem el text!
+            if i <= req.current_slot and clip_i and clip_i.subtitol:
+                offset_x = req.list_x + txt_num.w + 20 
                 
-                txt_clip = TextClip(req.clip_text, fontsize=req.clip_font_size, color=req.clip_color, 
-                                    font=req.clip_font, stroke_color=req.clip_stroke_color, stroke_width=req.clip_stroke_width)
+                txt_clip = TextClip(clip_i.subtitol, 
+                                    fontsize=clip_i.estil.get("font_size", 70), 
+                                    color=clip_i.estil.get("color", "white"), 
+                                    font=clip_i.estil.get("font", "Arial"), 
+                                    stroke_color=clip_i.estil.get("stroke_color", "black"), 
+                                    stroke_width=clip_i.estil.get("stroke_width", 3))
                 
                 txt_clip = txt_clip.set_position((offset_x, y_pos + 5)).set_duration(0.1)
                 clips_to_composite.append(txt_clip)
@@ -243,7 +237,6 @@ def renderitzar_clip(request: RenderRequest):
 @app.post("/render-top")
 def renderitzar_top(req: RenderTopRequest):
     try:
-        # 1. Ordenar els clips
         clips_data = req.clips
         if req.ordre == "ascendent":
             clips_data.sort(key=lambda x: x.posicio)
@@ -253,7 +246,6 @@ def renderitzar_top(req: RenderTopRequest):
         final_clips = []
         total_slots = len(clips_data)
         
-        # Agafem les posicions de la llista (valors per defecte si fallen)
         list_x = req.estil_global.get("list_x", 80)
         list_start_y = req.estil_global.get("list_start_y", 450)
         list_gap_y = req.estil_global.get("list_gap_y", 110)
@@ -268,7 +260,6 @@ def renderitzar_top(req: RenderTopRequest):
             v_clip = VideoFileClip(ruta_clip)
             layers = [v_clip]
             
-            # Títol Global a cada clip
             if req.titol_global:
                 txt_global = TextClip(
                     req.titol_global, 
@@ -283,37 +274,34 @@ def renderitzar_top(req: RenderTopRequest):
                 txt_global = txt_global.set_position((x_val, req.estil_global.get("pos_y", 200))).set_duration(v_clip.duration)
                 layers.append(txt_global)
             
-            # Generem tota la llista de números per aquest clip
             for i in range(1, total_slots + 1):
                 y_pos = list_start_y + ((i - 1) * list_gap_y)
                 num_color = number_colors[(i - 1) % len(number_colors)]
                 
-                txt_num = TextClip(
-                    f"{i}.", 
-                    fontsize=clip_data.estil.get("font_size", 70) + 15,
-                    color=num_color, 
-                    font="Impact", 
-                    stroke_color="black", 
-                    stroke_width=clip_data.estil.get("stroke_width", 3) + 1
-                )
+                # Busquem el clip corresponent a la posició i
+                clip_i = next((c for c in clips_data if c.posicio == i), None)
+                
+                stroke_w = clip_i.estil.get("stroke_width", 3) + 1 if clip_i else 4
+                f_size = clip_i.estil.get("font_size", 70) + 15 if clip_i else 85
+                
+                txt_num = TextClip(f"{i}.", fontsize=f_size, color=num_color, font="Impact", stroke_color="black", stroke_width=stroke_w)
                 txt_num = txt_num.set_position((list_x, y_pos)).set_duration(v_clip.duration)
                 layers.append(txt_num)
                 
-                # Només posem text si és el número que toca ara
-                if i == clip_data.posicio and clip_data.subtitol:
+                # Aquí és on fem la màgia del render: només posem el text si i és MENOR O IGUAL al clip actual
+                if i <= clip_data.posicio and clip_i and clip_i.subtitol:
                     offset_x = list_x + txt_num.w + 20
                     txt_clip = TextClip(
-                        clip_data.subtitol, 
-                        fontsize=clip_data.estil.get("font_size", 70), 
-                        color=clip_data.estil.get("color", "white"), 
-                        font=clip_data.estil.get("font", "Arial"), 
-                        stroke_color=clip_data.estil.get("stroke_color", "black"), 
-                        stroke_width=clip_data.estil.get("stroke_width", 3)
+                        clip_i.subtitol, 
+                        fontsize=clip_i.estil.get("font_size", 70), 
+                        color=clip_i.estil.get("color", "white"), 
+                        font=clip_i.estil.get("font", "Arial"), 
+                        stroke_color=clip_i.estil.get("stroke_color", "black"), 
+                        stroke_width=clip_i.estil.get("stroke_width", 3)
                     )
                     txt_clip = txt_clip.set_position((offset_x, y_pos + 5)).set_duration(v_clip.duration)
                     layers.append(txt_clip)
 
-            # Composició final d'aquest fragment
             comp = CompositeVideoClip(layers)
             final_clips.append(comp)
 

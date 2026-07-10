@@ -157,32 +157,28 @@ function App() {
   };
 
   // --- PREVIEWS SEPARADES ---
-  const generarPreviewGlobal = async (silenci = false) => {
+// --- PREVIEWS SEPARADES ---
+const generarPreviewGlobal = async (silenci = false) => {
     if (!topClips[0] || !topClips[0].arxiu) { alert("Posa un vídeo al primer clip per previsualitzar el fons."); return; }
     if (!silenci) { setCarregantPreview(true); setPreviewSrc(null); }
     setPreviewClipId('global'); 
-
-    body: JSON.stringify({
-    video_path: topClips[0].arxiu,
-    global_text: topTitol,
-    global_color: estilGlobal.color, global_stroke_color: estilGlobal.stroke_color, global_stroke_width: estilGlobal.stroke_width,
-    global_pos_x: estilGlobal.pos_x, global_pos_y: estilGlobal.pos_y, 
-    global_font_size: estilGlobal.font_size, global_font: estilGlobal.font,
-    clip_text: "", 
-    total_slots: topClips.length, current_slot: 0, // <-- 0 perquè només mostri els números sense text
-    list_x: estilGlobal.list_x, list_start_y: estilGlobal.list_start_y, list_gap_y: estilGlobal.list_gap_y
-  })
 
     try {
       const res = await fetch("http://localhost:8000/preview-frame", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           video_path: topClips[0].arxiu,
+          
           global_text: topTitol,
           global_color: estilGlobal.color, global_stroke_color: estilGlobal.stroke_color, global_stroke_width: estilGlobal.stroke_width,
           global_pos_x: estilGlobal.pos_x, global_pos_y: estilGlobal.pos_y, 
           global_font_size: estilGlobal.font_size, global_font: estilGlobal.font,
-          clip_text: "" // Només el global
+          
+          clips: topClips, // NOU: Enviem tota la llista d'arxius
+          
+          total_slots: topClips.length, 
+          current_slot: 0, 
+          list_x: estilGlobal.list_x, list_start_y: estilGlobal.list_start_y, list_gap_y: estilGlobal.list_gap_y
         })
       });
       if (res.ok) { const blob = await res.blob(); setPreviewSrc(URL.createObjectURL(blob)); }
@@ -195,36 +191,22 @@ function App() {
     if (!silenci) { setCarregantPreview(true); setPreviewSrc(null); }
     setPreviewClipId(clip.id); 
 
-    body: JSON.stringify({
-    video_path: clip.arxiu,
-    global_text: topTitol,
-    global_color: estilGlobal.color, global_stroke_color: estilGlobal.stroke_color, global_stroke_width: estilGlobal.stroke_width,
-    global_pos_x: estilGlobal.pos_x, global_pos_y: estilGlobal.pos_y, 
-    global_font_size: estilGlobal.font_size, global_font: estilGlobal.font,
-    clip_text: clip.subtitol, // Eliminem el `${clip.posicio}. ` d'aquí perquè ara ho dibuixa el Python
-    clip_color: clip.estil.color, clip_stroke_color: clip.estil.stroke_color, clip_stroke_width: clip.estil.stroke_width,
-    clip_font_size: clip.estil.font_size, clip_font: clip.estil.font,
-    total_slots: topClips.length, current_slot: clip.posicio, // <-- Li passem la posició actual
-    list_x: estilGlobal.list_x, list_start_y: estilGlobal.list_start_y, list_gap_y: estilGlobal.list_gap_y
-  })
-
     try {
       const res = await fetch("http://localhost:8000/preview-frame", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           video_path: clip.arxiu,
-          // Enviem el Global (que sempre s'ha de veure)
+          
           global_text: topTitol,
           global_color: estilGlobal.color, global_stroke_color: estilGlobal.stroke_color, global_stroke_width: estilGlobal.stroke_width,
           global_pos_x: estilGlobal.pos_x, global_pos_y: estilGlobal.pos_y, 
           global_font_size: estilGlobal.font_size, global_font: estilGlobal.font,
           
-          // Enviem el Clip
-          clip_text: clip.subtitol ? `${clip.posicio}. ${clip.subtitol}` : `${clip.posicio}.`,
-          clip_color: clip.estil.color, clip_stroke_color: clip.estil.stroke_color, clip_stroke_width: clip.estil.stroke_width,
-          clip_pos_x: "center", // Forçat
-          clip_pos_y: 600,      // Forçat
-          clip_font_size: clip.estil.font_size, clip_font: clip.estil.font
+          clips: topClips, // NOU: Enviem tota la llista per saber l'estil dels clips anteriors
+          
+          total_slots: topClips.length, 
+          current_slot: clip.posicio, 
+          list_x: estilGlobal.list_x, list_start_y: estilGlobal.list_start_y, list_gap_y: estilGlobal.list_gap_y
         })
       });
       if (res.ok) { const blob = await res.blob(); setPreviewSrc(URL.createObjectURL(blob)); }
