@@ -1,4 +1,5 @@
 import os
+import sys
 import shutil
 import random
 
@@ -9,7 +10,7 @@ if not hasattr(PIL.Image, 'ANTIALIAS'):
 # ----------------------------------------
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -39,6 +40,27 @@ for directory in [ASSETS_DIR, OUTPUT_DIR, os.path.join(OUTPUT_DIR, TOPS_DIR)]:
 
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 app.mount("/output", StaticFiles(directory="output"), name="output")
+
+# ==========================================
+# CONFIGURACIÓ PER SERVIR EL FRONTEND (REACT)
+# ==========================================
+if getattr(sys, 'frozen', False):
+    # Si s'està executant des del .exe compilat per PyInstaller
+    BASE_DIR = sys._MEIPASS
+    DIST_DIR = os.path.join(BASE_DIR, "dist")
+else:
+    # Si s'està executant normalment des de Python (VS Code)
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    DIST_DIR = os.path.join(BASE_DIR, "..", "frontend", "vite-project", "dist")
+
+# Només muntem la web si la carpeta 'dist' existeix (per evitar errors si encara no has compilat)
+if os.path.exists(DIST_DIR):
+    app.mount("/app", StaticFiles(directory=DIST_DIR, html=True), name="app")
+
+# Redireccionem l'arrel (/) cap a l'aplicació web
+@app.get("/")
+def arrel():
+    return RedirectResponse(url="/app/")
 
 # ==========================================
 # MODELS DE DADES
@@ -418,3 +440,8 @@ def renderitzar_top(req: RenderTopRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+    
+if __name__ == "__main__":
+    import uvicorn
+    # Engeguem el servidor directament des del codi
+    uvicorn.run(app, host="127.0.0.1", port=8000)
