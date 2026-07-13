@@ -15,8 +15,15 @@ export default function OpcionsGlobals({
         <div style={{ flex: 1 }}>
           <label style={{ display: "block", color: "#9ca3af", marginBottom: "5px" }}>Títol Global del Vídeo:</label>
           <div style={{ display: "flex", gap: "10px" }}>
-            <input type="text" value={topTitol} onChange={e => setTopTitol(e.target.value)} placeholder="Ex: Top 5 Dades curioses" style={{ flex: 1, padding: "12px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "1px solid #555" }} />
-            <button onClick={() => setMostrarEstilGlobal(!mostrarEstilGlobal)} style={{ padding: "0 20px", backgroundColor: mostrarEstilGlobal ? "#6b7280" : "#4b5563", color: "white", border: "none", borderRadius: "6px", cursor: "pointer" }}>
+            {/* CANVI: Convertit a textarea per permetre enters */}
+            <textarea 
+              value={topTitol} 
+              onChange={e => setTopTitol(e.target.value)} 
+              placeholder="Ex: Top 5&#10;Dades curioses" 
+              rows="2"
+              style={{ flex: 1, padding: "8px 12px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "1px solid #555", resize: "none", fontFamily: "inherit" }} 
+            />
+            <button onClick={() => setMostrarEstilGlobal(!mostrarEstilGlobal)} style={{ padding: "0 20px", backgroundColor: mostrarEstilGlobal ? "#6b7280" : "#4b5563", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", height: "50px" }}>
               🎨 Modificar text
             </button>
           </div>
@@ -24,7 +31,7 @@ export default function OpcionsGlobals({
         <div>
           <label style={{ display: "block", color: "#9ca3af", marginBottom: "5px" }}>Ordre:</label>
           <div style={{ display: "flex", gap: "10px" }}>
-            <select value={topOrdre} onChange={e => setTopOrdre(e.target.value)} style={{ width: "130px", padding: "12px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "1px solid #555" }}>
+            <select value={topOrdre} onChange={e => setTopOrdre(e.target.value)} style={{ width: "130px", padding: "12px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "1px solid #555", height: "50px" }}>
               <option value="ascendent">Ascendent</option>
               <option value="descendent">Descendent</option>
               <option value="personalitzat">Personalitzat</option>
@@ -37,14 +44,14 @@ export default function OpcionsGlobals({
                 onChange={e => setOrdrePersonalitzat(e.target.value)} 
                 placeholder="Ex: 5,4,2,1,3" 
                 title="Introdueix l'ordre desitjat separat per comes"
-                style={{ width: "120px", padding: "12px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "1px solid #555" }} 
+                style={{ width: "120px", padding: "12px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "1px solid #555", height: "50px", boxSizing: "border-box" }} 
               />
             )}
           </div>
         </div>
         <div>
           <label style={{ display: "block", color: "#9ca3af", marginBottom: "5px" }}>Arxiu final (.mp4):</label>
-          <input type="text" value={topNomSortida} onChange={e => setTopNomSortida(e.target.value)} placeholder="video_final" style={{ width: "180px", padding: "12px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "1px solid #555" }} />
+          <input type="text" value={topNomSortida} onChange={e => setTopNomSortida(e.target.value)} placeholder="video_final" style={{ width: "180px", padding: "12px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "1px solid #555", height: "50px", boxSizing: "border-box" }} />
         </div>
       </div>
 
@@ -73,6 +80,30 @@ export default function OpcionsGlobals({
             <div>
               <label style={{ display: "block", fontSize: "0.8rem", color: "#9ca3af" }}>Mida:</label>
               <input type="number" value={estilGlobal.font_size} onChange={e => setEstilGlobal({...estilGlobal, font_size: parseInt(e.target.value) || 10})} style={{ width: "70px", padding: "8px", borderRadius: "6px", backgroundColor: "#333", color: "white", border: "none" }} />
+            </div>
+
+            {/* NOU: Opcions del fons negre (s'afegeix directament al teu estilGlobal) */}
+            <div style={{ borderLeft: "1px solid #444", paddingLeft: "15px", display: "flex", gap: "15px", alignItems: "center" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.8rem", color: "#9ca3af", marginBottom: "5px" }}>Fons Títol:</label>
+                <input 
+                  type="checkbox" 
+                  checked={estilGlobal.has_bg || false} 
+                  onChange={e => setEstilGlobal({...estilGlobal, has_bg: e.target.checked})} 
+                  style={{ width: "16px", height: "16px", cursor: "pointer" }}
+                />
+              </div>
+              {estilGlobal.has_bg && (
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", color: "#9ca3af" }}>Color Fons:</label>
+                  <input 
+                    type="color" 
+                    value={estilGlobal.bg_color || "#000000"} 
+                    onChange={e => setEstilGlobal({...estilGlobal, bg_color: e.target.value})} 
+                    style={{ padding: "0", cursor: "pointer", height: "35px", width: "40px", border: "none" }} 
+                  />
+                </div>
+              )}
             </div>
             
             <div style={{ borderLeft: "1px solid #444", paddingLeft: "15px", display: "flex", gap: "15px" }}>

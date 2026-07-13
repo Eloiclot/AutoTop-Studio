@@ -3,6 +3,18 @@ import sys
 import shutil
 import random
 
+# 1. Detectem la ruta on s'està executant el programa (funciona per a local i per al futur .exe)
+if getattr(sys, 'frozen', False):
+    base_dir = sys._MEIPASS
+else:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+
+# 2. Definim la ruta exacta al nostre ImageMagick privat
+magick_path = os.path.join(base_dir, "imagemagick", "magick.exe")
+
+# 3. Forcem el sistema a fer servir aquesta ruta per als textos
+os.environ["IMAGEMAGICK_BINARY"] = magick_path
+
 # --- PEGAT PER A MOVIEPY I PILLOW 10+ ---
 import PIL.Image
 if not hasattr(PIL.Image, 'ANTIALIAS'):
@@ -100,6 +112,9 @@ class RenderTopRequest(BaseModel):
     output_name: str
     estil_global: dict
 
+    global_has_bg: bool = False
+    global_bg_color: str = "#000000"
+
 # Actualitzat amb ordre i ordre_personalitzat
 class PreviewRequest(BaseModel):
     video_path: str
@@ -113,6 +128,10 @@ class PreviewRequest(BaseModel):
     global_pos_y: int = 200
     global_font_size: int = 80
     global_font: str = "Impact"
+
+    global_has_bg: bool = False
+    global_bg_color: str = "#000000"
+
     clips: list[TopClip] = []
     total_slots: int = 1
     current_slot: int = 0
@@ -246,8 +265,23 @@ def get_preview_frame(req: PreviewRequest):
         clips_to_composite = [bg_base, bg_video_frame]
 
         if req.global_text:
-            txt_global = TextClip(req.global_text, fontsize=req.global_font_size, color=req.global_color, 
-                                font=req.global_font, stroke_color=req.global_stroke_color, stroke_width=req.global_stroke_width)
+            # Creem els arguments bàsics sense el fons
+            args_text = {
+                "fontsize": req.global_font_size,
+                "color": req.global_color,
+                "font": req.global_font,
+                "stroke_color": req.global_stroke_color,
+                "stroke_width": req.global_stroke_width,
+                "align": "center"
+            }
+            
+            # Només afegim la clau bg_color si l'usuari ho ha activat
+            if req.global_has_bg:
+                args_text["bg_color"] = req.global_bg_color
+
+            # Generem el text desempaquetant el diccionari
+            txt_global = TextClip(req.global_text, **args_text)
+            
             x_val_global = int(req.global_pos_x) if str(req.global_pos_x).lstrip('-').isdigit() else req.global_pos_x
             txt_global = txt_global.set_position((x_val_global, req.global_pos_y)).set_duration(0.1)
             clips_to_composite.append(txt_global)
@@ -319,7 +353,6 @@ def get_preview_frame(req: PreviewRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error generant preview: {str(e)}")
 
-
 @app.post("/render-top")
 def renderitzar_top(req: RenderTopRequest):
     try:
@@ -365,14 +398,22 @@ def renderitzar_top(req: RenderTopRequest):
             layers = [v_clip_final]
             
             if req.titol_global:
-                txt_global = TextClip(
-                    req.titol_global, 
-                    fontsize=req.estil_global.get("font_size", 80), 
-                    color=req.estil_global.get("color", "white"), 
-                    font=req.estil_global.get("font", "Arial"), 
-                    stroke_color=req.estil_global.get("stroke_color", "black"), 
-                    stroke_width=req.estil_global.get("stroke_width", 3)
-                )
+                # Diccionari dinàmic per al fons
+                args_text = {
+                    "fontsize": req.estil_global.get("font_size", 80),
+                    "color": req.estil_global.get("color", "white"),
+                    "font": req.estil_global.get("font", "Arial"),
+                    "stroke_color": req.estil_global.get("stroke_color", "black"),
+                    "stroke_width": req.estil_global.get("stroke_width", 3),
+                    "align": "center"
+                }
+                
+                # Només afegim bg_color si està activat
+                if req.global_has_bg:
+                    args_text["bg_color"] = req.global_bg_color
+
+                txt_global = TextClip(req.titol_global, **args_text)
+                
                 pos_x = req.estil_global.get("pos_x", "center")
                 x_val = int(pos_x) if str(pos_x).lstrip('-').isdigit() else pos_x
                 txt_global = txt_global.set_position((x_val, req.estil_global.get("pos_y", 200))).set_duration(v_clip_final.duration)
@@ -382,7 +423,6 @@ def renderitzar_top(req: RenderTopRequest):
             for i in range(1, total_slots + 1):
                 y_pos = list_start_y_fixed + ((i - 1) * list_gap_y_fixed)
                 
-                # He corregit la tabulació dels colors que es va trencar a la versió anterior
                 if i == 1:
                     num_color = "#FFE100" 
                 elif i == 2:
@@ -440,8 +480,3 @@ def renderitzar_top(req: RenderTopRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-    
-if __name__ == "__main__":
-    import uvicorn
-    # Engeguem el servidor directament des del codi
-    uvicorn.run(app, host="127.0.0.1", port=8000)

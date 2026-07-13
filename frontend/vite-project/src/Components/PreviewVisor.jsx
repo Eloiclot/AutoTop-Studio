@@ -22,8 +22,25 @@ export default function PreviewVisor({
           ordre: topOrdre, 
           ordre_personalitzat: ordrePersonalitzat, 
           
-          global_text: topTitol, global_color: estilGlobal.color, global_stroke_color: estilGlobal.stroke_color, global_stroke_width: estilGlobal.stroke_width, global_pos_x: estilGlobal.pos_x, global_pos_y: estilGlobal.pos_y, global_font_size: estilGlobal.font_size, global_font: estilGlobal.font,
-          clips: topClips, total_slots: topClips.length, current_slot: clip.posicio, list_x: estilGlobal.list_x, list_start_y: estilGlobal.list_start_y, list_gap_y: estilGlobal.list_gap_y
+          global_text: topTitol, 
+          global_color: estilGlobal.color, 
+          global_stroke_color: estilGlobal.stroke_color, 
+          global_stroke_width: estilGlobal.stroke_width, 
+          global_pos_x: estilGlobal.pos_x, 
+          global_pos_y: estilGlobal.pos_y, 
+          global_font_size: estilGlobal.font_size, 
+          global_font: estilGlobal.font,
+          
+          // --- AFEGIT: Variables del fons ---
+          global_has_bg: estilGlobal.has_bg,
+          global_bg_color: estilGlobal.bg_color,
+          
+          clips: topClips, 
+          total_slots: topClips.length, 
+          current_slot: clip.posicio, 
+          list_x: estilGlobal.list_x, 
+          list_start_y: estilGlobal.list_start_y, 
+          list_gap_y: estilGlobal.list_gap_y
         })
       });
       if (res.ok) { const blob = await res.blob(); setPreviewSrc(URL.createObjectURL(blob)); }

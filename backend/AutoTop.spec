@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import copy_metadata
 
-datas = [('../frontend/vite-project/dist', 'dist')]
+datas = [('../frontend/vite-project/dist', 'dist'), ('imagemagick', 'imagemagick')]
 datas += copy_metadata('imageio')
 
 

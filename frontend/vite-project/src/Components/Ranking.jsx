@@ -47,7 +47,11 @@ export default function Ranking({
           ordre_personalitzat: ordrePersonalitzat, 
           clips: topClips, 
           output_name: nomFinal, 
-          estil_global: estilGlobal 
+          estil_global: estilGlobal,
+          
+          // --- AFEGIT: Variables del fons ---
+          global_has_bg: estilGlobal.has_bg,
+          global_bg_color: estilGlobal.bg_color
         })
       });
       if (res.ok) { setMissatgeTop(`✅ TOP Generat perfectament a Tops_Finals!`); carregarExplorador(carpetaActual); } 

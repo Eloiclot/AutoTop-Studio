@@ -30,15 +30,15 @@ function App() {
   const [carpetesArrel, setCarpetesArrel] = useState([]) 
 
   // ESTATS GLOBALS CREADOR DE TOPS
-  const [topTitol, setTopTitol] = useState("")
+  const [topTitol, setTopTitol] = useState("Top 5 Most Amazing Videos")
   const [topOrdre, setTopOrdre] = useState("ascendent")
   const [ordrePersonalitzat, setOrdrePersonalitzat] = useState("")
   const [topNomSortida, setTopNomSortida] = useState("")
   
-  const estilPerDefecteClip = { color: "#ffffff", stroke_color: "#000000", stroke_width: 4, font_size: 70, font: "Arial" }
+  const estilPerDefecteClip = { color: "#9cdeff", stroke_color: "#000000", stroke_width: 4, font_size: 70, font: "Impact" }
   
   const [estilGlobal, setEstilGlobal] = useState({ 
-    color: "#ffffff", stroke_color: "#000000", stroke_width: 4, pos_x: "center", pos_y: 70, font_size: 80, font: "Arial",
+    color: "#ff0000", stroke_color: "#000000", stroke_width: 4, pos_x: "center", pos_y: 70, font_size: 80, font: "Impact",
     list_x: 80, list_start_y: 450, list_gap_y: 110
   })
 
