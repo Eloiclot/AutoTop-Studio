@@ -71,7 +71,7 @@
  [],
  False,
  False,
- 1783772250,
+ 1784042367,
  [('run.exe',
    'C:\\Users\\eloi2\\AutoTop-Studio\\backend\\venv\\Lib\\site-packages\\PyInstaller\\bootloader\\Windows-64bit-intel\\run.exe',
    'EXECUTABLE')],

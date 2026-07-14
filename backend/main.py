@@ -2,6 +2,7 @@ import os
 import sys
 import shutil
 import random
+import glob
 
 from proglog import ProgressBarLogger
 
@@ -31,6 +32,9 @@ from pydantic import BaseModel
 from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, ImageClip, ColorClip
 import moviepy.video.fx.all as vfx
 
+
+
+
 # --- CONFIGURACIÓ IMAGEMAGICK ---
 os.environ["IMAGEMAGICK_BINARY"] = r"C:\Program Files\ImageMagick-7.1.2-Q16-HDRI\magick.exe"
 
@@ -50,6 +54,34 @@ class CustomMoviePyLogger(ProgressBarLogger):
         if total > 0:
             percent = int((value / total) * 100)
             progress_store["percent"] = percent
+
+# Funció mestra per netejar les previsualitzacions
+def esborrar_arxius_preview():
+    # Busca recursivament tots els arxius .png que continguin "preview" al nom
+    rutes = glob.glob("**/*preview*.png", recursive=True) 
+    for ruta in rutes:
+        try:
+            os.remove(ruta)
+            print(f"🗑️ Esborrat: {ruta}")
+        except Exception as e:
+            print(f"No s'ha pogut esborrar {ruta}: {e}")
+
+# ESTRATÈGIA 2: Neteja a l'engegada de l'aplicació
+@app.on_event("startup")
+async def startup_event():
+    print("🧹 Netejant arxius temporals de previsualització antics...")
+    esborrar_arxius_preview()
+
+# ESTRATÈGIA 3: Endpoint per rebre l'ordre des del Frontend
+@app.post("/clear-previews")
+async def clear_previews():
+    esborrar_arxius_preview()
+    return {"missatge": "Arxius temporals esborrats correctament"}
+
+
+
+
+
 
 @app.get("/progress")
 def obtenir_progres():
@@ -528,3 +560,14 @@ def renderitzar_top(req: RenderTopRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+    
+
+if __name__ == "__main__":
+    import uvicorn
+    import multiprocessing
+
+# Això és vital perquè els subprocessos funcionin bé en un .exe a Windows
+    multiprocessing.freeze_support()
+
+# ATENCIÓ: Posa la variable `app` sense cometes, NO posis "main:app"
+    uvicorn.run(app, host="127.0.0.1", port=8000)

@@ -58,7 +58,15 @@ export default function Ranking({
   };
 
   // NOVA FUNCIÓ: Neteja l'estat local sense recarregar la pàgina
-  const netejarTop = () => {
+  const netejarTop = async () => {
+    try {
+      // Cridem al nou endpoint perquè elimini els arxius de la carpeta
+      await fetch("http://localhost:8000/clear-previews", { method: "POST" });
+    } catch (e) {
+      console.error("Error netejant els arxius de previsualització", e);
+    }
+
+    // Resetejem tot l'estat del React per començar de zero
     setTopClips([]); 
     setPreviewClipId(null);
     setPreviewSrc(null);

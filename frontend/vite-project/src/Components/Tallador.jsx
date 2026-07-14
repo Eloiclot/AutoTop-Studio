@@ -51,7 +51,7 @@ export default function Tallador({ carpetesArrel, carregarExplorador, carpetaAct
   const marquesTemps = useMemo(() => {
     const marques = {}; if (durada === 0) return marques;
     let interval = 5; if (durada > 60) interval = 10; if (durada > 120) interval = 30;
-    for (let i = 0; i <= durada; i += interval) marques[i] = { style: { color: '#9ca3af', marginTop: '12px', fontSize: '18px' }, label: `${i}s` };
+    for (let i = 0; i <= durada; i += interval) marques[i] = { style: { color: '#9ca3af', marginTop: '6px', fontSize: '12px' }, label: `${i}s` };
     return marques;
   }, [durada]);
 
@@ -72,33 +72,62 @@ export default function Tallador({ carpetesArrel, carregarExplorador, carpetaAct
 
   return (
     <>
-      <div style={{ marginBottom: "30px", display: "flex", gap: "20px", justifyContent: "center" }}>
-        <input type="file" accept="video/mp4" onChange={carregarVideo} style={{ padding: "15px", backgroundColor: "#333", borderRadius: "8px", color: "white" }} />
-        <select style={{ padding: "15px", backgroundColor: "#444", color: "white", borderRadius: "8px" }} onChange={(e) => { if (e.target.value) { setVideoUrl(`http://localhost:8000/assets/${e.target.value}`); setNomVideoActual(e.target.value); if (videoRef.current) videoRef.current.load(); } }}>
-          <option value="">Obre un original recent...</option>
-          {recents.map(v => <option key={v} value={v}>{v}</option>)}
-        </select>
-      </div>
+      {!videoUrl && (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "20px", marginTop: "40px", backgroundColor: "#1e1e1e", padding: "50px", borderRadius: "16px" }}>
+          <h2 style={{ color: "white", margin: "0 0 20px 0" }}>🎬 Selecciona un vídeo per començar a tallar</h2>
+          <input type="file" accept="video/mp4" onChange={carregarVideo} style={{ padding: "15px", backgroundColor: "#333", borderRadius: "8px", color: "white", width: "300px" }} />
+          <select style={{ padding: "15px", backgroundColor: "#444", color: "white", borderRadius: "8px", width: "300px" }} onChange={(e) => { if (e.target.value) { setVideoUrl(`http://localhost:8000/assets/${e.target.value}`); setNomVideoActual(e.target.value); if (videoRef.current) videoRef.current.load(); } }}>
+            <option value="">Obre un original recent...</option>
+            {recents.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+      )}
 
       {videoUrl && (
-        <div style={{ backgroundColor: "#1e1e1e", padding: "40px", borderRadius: "16px", marginBottom: "40px", boxSizing: "border-box" }}>
-          <video ref={videoRef} src={videoUrl} controls onLoadedMetadata={quanVideoCarrega} onTimeUpdate={controlarLimitReproduccio} onPlay={controlarIniciReproduccio} style={{ width: "auto", maxWidth: "100%", maxHeight: "60vh", borderRadius: "12px", backgroundColor: "black" }} />
-          <div style={{ marginTop: "60px", padding: "0 20px" }}>
-            <h3 style={{ margin: "0 0 30px 0", fontSize: "1.8rem" }}>Talls: <span style={{ color: "#4ade80" }}>{talls[0].toFixed(1)}s</span> fins a <span style={{ color: "#f87171" }}>{talls[1].toFixed(1)}s</span></h3>
-            <div style={{ textAlign: "left" }}>
-              <Slider range allowCross={false} min={0} max={durada} step={0.1} value={talls} onChange={alCanviarSlider} marks={marquesTemps} trackStyle={[{ backgroundColor: '#646cff', height: 20 }]} railStyle={{ backgroundColor: '#444', height: 20 }} handleStyle={[{ borderColor: '#fff', height: 54, width: 8, marginTop: -17, backgroundColor: 'white', cursor: 'ew-resize', borderRadius: '3px' }, { borderColor: '#fff', height: 54, width: 8, marginTop: -17, backgroundColor: 'white', cursor: 'ew-resize', borderRadius: '3px' }]} dotStyle={{ display: 'none' }} />
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 10px 10px 10px", borderBottom: "1px solid #333", marginBottom: "15px" }}>
+            <div style={{ color: "#9ca3af", fontSize: "0.9rem" }}>
+              Editant: <span style={{ color: "white", fontWeight: "bold" }}>{nomVideoActual}</span>
             </div>
-            <div style={{ marginTop: "80px", display: "flex", gap: "15px", justifyContent: "center", backgroundColor: "#2d2d2d", padding: "20px", borderRadius: "12px" }}>
-              <input type="text" placeholder="Nom del clip" value={nomPersonalitzat} onChange={e => setNomPersonalitzat(e.target.value)} style={{ padding: "10px", borderRadius: "6px" }} />
-              <select value={carpetaDesti} onChange={e => setCarpetaDesti(e.target.value)} style={{ padding: "10px", borderRadius: "6px" }}>
-                <option value="">Guarda a l'arrel</option>
-                {carpetesArrel.filter(c => c !== "Tops_Finals").map(c => <option key={c} value={c}>📁 {c}</option>)}
+            <div style={{ display: "flex", gap: "10px" }}>
+              <input type="file" accept="video/mp4" onChange={carregarVideo} style={{ padding: "6px", backgroundColor: "#333", borderRadius: "4px", color: "white", fontSize: "0.8rem", width: "180px", border: "none" }} />
+              <select style={{ padding: "6px", backgroundColor: "#444", color: "white", borderRadius: "4px", fontSize: "0.8rem", border: "none" }} onChange={(e) => { if (e.target.value) { setVideoUrl(`http://localhost:8000/assets/${e.target.value}`); setNomVideoActual(e.target.value); if (videoRef.current) videoRef.current.load(); } }}>
+                <option value="">Canviar a recent...</option>
+                {recents.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
-              <button onClick={exportarClip} disabled={renderitzantClip} style={{ padding: "10px 20px", backgroundColor: renderitzantClip ? "#555" : "#ef4444", color: "white", borderRadius: "6px", fontWeight: "bold", border: "none", cursor: "pointer" }}>{renderitzantClip ? "Tallant..." : "Guardar Clip"}</button>
             </div>
-            {missatgeClip && <p style={{ color: "#60a5fa", marginTop: "15px" }}>{missatgeClip}</p>}
           </div>
-        </div>
+
+          <div style={{ backgroundColor: "#1e1e1e", padding: "15px 20px", borderRadius: "12px", display: "flex", flexDirection: "column", alignItems: "center", width: "100%", boxSizing: "border-box" }}>
+            
+            {/* L'alçada ha baixat a 55vh perquè càpiga sencer a pantalles de portàtil */}
+            <video ref={videoRef} src={videoUrl} controls onLoadedMetadata={quanVideoCarrega} onTimeUpdate={controlarLimitReproduccio} onPlay={controlarIniciReproduccio} style={{ width: "auto", maxWidth: "100%", maxHeight: "55vh", borderRadius: "8px", backgroundColor: "black", boxShadow: "0 4px 10px rgba(0,0,0,0.3)" }} />
+            
+            <div style={{ width: "100%", marginTop: "15px" }}>
+              
+              {/* S'ha reduït el marge inferior a 15px */}
+              <div style={{ padding: "0 10px", marginBottom: "15px", width: "100%", boxSizing: "border-box" }}>
+                <Slider range allowCross={false} min={0} max={durada} step={0.1} value={talls} onChange={alCanviarSlider} marks={marquesTemps} trackStyle={[{ backgroundColor: '#646cff', height: 16 }]} railStyle={{ backgroundColor: '#444', height: 16 }} handleStyle={[{ borderColor: '#fff', height: 35, width: 8, marginTop: -9, backgroundColor: 'white', cursor: 'ew-resize', borderRadius: '3px' }, { borderColor: '#fff', height: 35, width: 8, marginTop: -9, backgroundColor: 'white', cursor: 'ew-resize', borderRadius: '3px' }]} dotStyle={{ display: 'none' }} />
+              </div>
+
+              <div style={{ display: "flex", gap: "15px", justifyContent: "center", alignItems: "center", backgroundColor: "#2d2d2d", padding: "10px 20px", borderRadius: "8px", flexWrap: "wrap" }}>
+                
+                <div style={{ fontSize: "1.1rem", fontWeight: "bold", marginRight: "10px", backgroundColor: "#111", padding: "6px 12px", borderRadius: "6px" }}>
+                  ⏱️ <span style={{ color: "#4ade80" }}>{talls[0].toFixed(1)}s</span> - <span style={{ color: "#f87171" }}>{talls[1].toFixed(1)}s</span>
+                </div>
+
+                <input type="text" placeholder="Nom del clip" value={nomPersonalitzat} onChange={e => setNomPersonalitzat(e.target.value)} style={{ padding: "8px", borderRadius: "4px", border: "1px solid #444", backgroundColor: "#1a1a1a", color: "white", width: "200px" }} />
+                <select value={carpetaDesti} onChange={e => setCarpetaDesti(e.target.value)} style={{ padding: "8px", borderRadius: "4px", border: "1px solid #444", backgroundColor: "#1a1a1a", color: "white", width: "180px" }}>
+                  <option value="">Guarda a l'arrel</option>
+                  {carpetesArrel.filter(c => c !== "Tops_Finals").map(c => <option key={c} value={c}>📁 {c}</option>)}
+                </select>
+                <button onClick={exportarClip} disabled={renderitzantClip} style={{ padding: "8px 20px", backgroundColor: renderitzantClip ? "#555" : "#ef4444", color: "white", borderRadius: "4px", fontWeight: "bold", border: "none", cursor: "pointer", fontSize: "1rem" }}>{renderitzantClip ? "Tallant..." : "Guardar Clip"}</button>
+              </div>
+              
+              {missatgeClip && <p style={{ color: "#60a5fa", marginTop: "10px", textAlign: "center", fontWeight: "bold", marginBottom: 0 }}>{missatgeClip}</p>}
+            </div>
+          </div>
+        </>
       )}
     </>
   )
