@@ -3,6 +3,8 @@ import sys
 import shutil
 import random
 
+from proglog import ProgressBarLogger
+
 # 1. Detectem la ruta on s'està executant el programa (funciona per a local i per al futur .exe)
 if getattr(sys, 'frozen', False):
     base_dir = sys._MEIPASS
@@ -33,6 +35,31 @@ import moviepy.video.fx.all as vfx
 os.environ["IMAGEMAGICK_BINARY"] = r"C:\Program Files\ImageMagick-7.1.2-Q16-HDRI\magick.exe"
 
 app = FastAPI()
+
+# Memòria global per al progrés
+progress_store = {"percent": 0}
+
+# Logger personalitzat per "llegir" la terminal de MoviePy
+class CustomMoviePyLogger(ProgressBarLogger):
+    def bars_callback(self, bar, attr, value, old_value=None):
+        #KillSwitch per matar procés
+        if progress_store.get("cancel"):
+            raise KeyboardInterrupt("CANCELLED_BY_USER")
+
+        total = self.bars[bar]['total']
+        if total > 0:
+            percent = int((value / total) * 100)
+            progress_store["percent"] = percent
+
+@app.get("/progress")
+def obtenir_progres():
+    return progress_store
+
+# NOU: Endpoint per disparar la cancel·lació
+@app.post("/cancel-render")
+def cancel_render():
+    progress_store["cancel"] = True
+    return {"status": "cancelling"}
 
 app.add_middleware(
     CORSMiddleware,
@@ -469,13 +496,34 @@ def renderitzar_top(req: RenderTopRequest):
         nom_arxiu = req.output_name if req.output_name.endswith('.mp4') else req.output_name + '.mp4'
         output_path = os.path.join(OUTPUT_DIR, TOPS_DIR, nom_arxiu)
         
-        video_final.write_videofile(output_path, fps=30, codec="libx264", audio_codec="aac",threads=8,preset="ultrafast")
+        # Reiniciem el comptador i creem l'espia abans de renderitzar
+        progress_store["percent"] = 0 
+        progress_store["cancel"] = False
+        logger_personalitzat = CustomMoviePyLogger()
+        
+        video_final.write_videofile(
+            output_path, 
+            fps=30, 
+            codec="libx264", 
+            audio_codec="aac",
+            threads=8,
+            preset="ultrafast",
+            logger=logger_personalitzat # Connectem l'espia a la generació
+        )
         
         for c in final_clips:
             c.close()
         video_final.close()
         
         return {"status": "success", "file": nom_arxiu}
+    
+    # --- NOU: AFEGEIX AQUEST BLOC EXACTAMENT AQUÍ ---
+    except KeyboardInterrupt:
+        print("⚠️ Renderització avortada. Matant el procés de FFMPEG.")
+        raise HTTPException(status_code=400, detail="CANCELLED_BY_USER")
+    # ------------------------------------------------
+
+
     except Exception as e:
         import traceback
         traceback.print_exc()

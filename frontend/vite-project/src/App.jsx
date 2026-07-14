@@ -39,7 +39,7 @@ function App() {
   
   const [estilGlobal, setEstilGlobal] = useState({ 
     color: "#ff0000", stroke_color: "#000000", stroke_width: 4, pos_x: "center", pos_y: 70, font_size: 80, font: "Impact",
-    list_x: 80, list_start_y: 450, list_gap_y: 110
+    list_x: 80, list_start_y: 450, list_gap_y: 110, has_bg: false, bg_color: "#000000"
   })
 
   const [topClips, setTopClips] = useState([

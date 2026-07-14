@@ -7,6 +7,8 @@ export default function Ranking({
 }) {
   const [renderitzantTop, setRenderitzantTop] = useState(false)
   const [missatgeTop, setMissatgeTop] = useState("")
+  const [progres, setProgres] = useState(0) 
+  const [videoAcabat, setVideoAcabat] = useState(null)
 
   const afegirSlotClip = () => {
     setTopClips([...topClips, { id: Date.now(), posicio: topClips.length + 1, arxiu: "", subtitol: "", mostrarEstil: false, estil: { ...estilPerDefecteClip } }]);
@@ -19,13 +21,50 @@ export default function Ranking({
   const actualitzarEstilClip = (id, camp, valor) => {
     setTopClips(topClips.map(clip => clip.id === id ? { ...clip, estil: { ...clip.estil, [camp]: valor } } : clip));
   };
+
+  const canviarPosicio = (id, novaPosicioStr) => {
+    const posNova = parseInt(novaPosicioStr);
+    const clipMogut = topClips.find(c => c.id === id);
+    const posAntiga = clipMogut.posicio;
+
+    const nousClips = topClips.map(clip => {
+      if (clip.id === id) return { ...clip, posicio: posNova };
+      if (clip.posicio === posNova) return { ...clip, posicio: posAntiga };
+      return clip;
+    });
+
+    nousClips.sort((a, b) => a.posicio - b.posicio);
+    setTopClips(nousClips);
+  };
   
   const treureSlot = (id) => {
-    setTopClips(topClips.filter(clip => clip.id !== id));
+    const filtrats = topClips.filter(clip => clip.id !== id);
+    const normalitzats = filtrats.map((clip, index) => ({ ...clip, posicio: index + 1 }));
+    setTopClips(normalitzats);
+    
     if (previewClipId === id) {
       setPreviewSrc(null);
       setPreviewClipId(null);
     }
+  };
+
+  const cancelarRender = async () => {
+    try {
+      await fetch("http://localhost:8000/cancel-render", { method: "POST" });
+      setMissatgeTop("⚠️ Cancel·lant la renderització...");
+    } catch (e) {
+      console.error("Error cancel·lant", e);
+    }
+  };
+
+  // NOVA FUNCIÓ: Neteja l'estat local sense recarregar la pàgina
+  const netejarTop = () => {
+    setTopClips([]); 
+    setPreviewClipId(null);
+    setPreviewSrc(null);
+    setVideoAcabat(null);
+    setMissatgeTop("");
+    setProgres(0);
   };
 
   const generarTopFinal = async () => {
@@ -37,7 +76,19 @@ export default function Ranking({
     }
 
     let nomFinal = topNomSortida.trim() !== "" ? topNomSortida.trim() : `TOP_${Math.floor(Date.now() / 1000)}`;
-    setRenderitzantTop(true); setMissatgeTop("⏳ Muntant el vídeo complet. Això trigarà força...");
+    setRenderitzantTop(true); 
+    setMissatgeTop("⏳ Muntant el vídeo complet...");
+    setProgres(0);
+    setVideoAcabat(null); 
+
+    const intervalProgres = setInterval(async () => {
+      try {
+        const res = await fetch("http://localhost:8000/progress");
+        const data = await res.json();
+        setProgres(data.percent);
+      } catch (e) {}
+    }, 500);
+
     try {
       const res = await fetch("http://localhost:8000/render-top", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -48,16 +99,31 @@ export default function Ranking({
           clips: topClips, 
           output_name: nomFinal, 
           estil_global: estilGlobal,
-          
-          // --- AFEGIT: Variables del fons ---
           global_has_bg: estilGlobal.has_bg,
           global_bg_color: estilGlobal.bg_color
         })
       });
-      if (res.ok) { setMissatgeTop(`✅ TOP Generat perfectament a Tops_Finals!`); carregarExplorador(carpetaActual); } 
-      else { const err = await res.json(); setMissatgeTop(`❌ ${err.detail}`); }
-    } catch (e) { setMissatgeTop("❌ Error de connexió"); }
-    setRenderitzantTop(false);
+      
+      const data = await res.json();
+      
+      if (res.ok) { 
+        setProgres(100);
+        setMissatgeTop(""); 
+        setVideoAcabat(data.file); 
+        carregarExplorador(carpetaActual); 
+      } else { 
+        if (data.detail && data.detail.includes("CANCELLED_BY_USER")) {
+          setMissatgeTop("🛑 Renderització cancel·lada per l'usuari.");
+        } else {
+          setMissatgeTop(`❌ ${data.detail}`); 
+        }
+      }
+    } catch (e) { 
+      setMissatgeTop("❌ Error de connexió amb el servidor"); 
+    } finally {
+      clearInterval(intervalProgres);
+      setRenderitzantTop(false);
+    }
   }
 
   return (
@@ -65,11 +131,21 @@ export default function Ranking({
       <h3 style={{ margin: "0 0 20px 0" }}>Llista de Clips</h3>
       
       {topClips.map((clip, index) => (
-        <div key={clip.id} style={{ marginBottom: "15px", backgroundColor: previewClipId === clip.id ? "#374151" : "#1a1a1a", borderRadius: "8px", border: previewClipId === clip.id ? "1px solid #3b82f6" : "1px solid transparent" }}>
+        <div key={clip.id} style={{ marginBottom: "15px", backgroundColor: previewClipId === clip.id ? "#374151" : "#1a1a1a", borderRadius: "8px", border: previewClipId === clip.id ? "1px solid #3b82f6" : "1px solid transparent", transition: "all 0.2s" }}>
           
           <div style={{ display: "flex", gap: "10px", alignItems: "center", padding: "10px" }}>
-            <div style={{ width: "50px" }}>
-              <input type="number" value={clip.posicio} onChange={e => actualitzarSlot(clip.id, "posicio", parseInt(e.target.value) || 0)} style={{ width: "100%", padding: "8px", borderRadius: "4px", border: "1px solid #444", backgroundColor: "#333", color: "white" }} title="Posició" />
+            
+            <div style={{ width: "60px" }}>
+              <select 
+                value={clip.posicio} 
+                onChange={e => canviarPosicio(clip.id, e.target.value)} 
+                style={{ width: "100%", padding: "8px", borderRadius: "4px", border: "1px solid #444", backgroundColor: "#333", color: "#eab308", fontWeight: "bold", cursor: "pointer", textAlign: "center" }} 
+                title="Canviar posició"
+              >
+                {topClips.map((_, i) => (
+                  <option key={i + 1} value={i + 1}>{i + 1}</option>
+                ))}
+              </select>
             </div>
             
             <div style={{ width: "140px" }}>
@@ -133,13 +209,68 @@ export default function Ranking({
           )}
         </div>
       ))}
-      <button onClick={afegirSlotClip} style={{ padding: "10px 20px", backgroundColor: "#4b5563", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "bold" }}>+ Afegir Slot Buit</button>
+      
+      {!videoAcabat && (
+        <button onClick={afegirSlotClip} style={{ padding: "10px 20px", backgroundColor: "#4b5563", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "bold" }}>+ Afegir Slot Buit</button>
+      )}
 
       <div style={{ textAlign: "center", marginTop: "30px", paddingTop: "25px", borderTop: "1px solid #444" }}>
-        <button onClick={generarTopFinal} disabled={renderitzantTop} style={{ width: "100%", padding: "15px 40px", fontSize: "1.3rem", backgroundColor: renderitzantTop ? "#555" : "#eab308", color: renderitzantTop ? "white" : "black", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: "bold" }}>
-          {renderitzantTop ? "⚙️ Processant tot l'arxiu..." : "🚀 Generar Top Final"}
-        </button>
-        {missatgeTop && <p style={{ color: "#4ade80", marginTop: "15px", fontSize: "1.1rem" }}>{missatgeTop}</p>}
+        
+        {/* NOVA PANTALLA D'ÈXIT (PAS INTERMIG) */}
+        {videoAcabat && !renderitzantTop ? (
+          <div style={{ backgroundColor: "#111", padding: "30px", borderRadius: "12px", border: "2px solid #10b981", boxShadow: "0 0 20px rgba(16, 185, 129, 0.2)" }}>
+            <h2 style={{ color: "#10b981", margin: "0 0 25px 0", fontSize: "1.8rem" }}>🎉 Top Generat amb Èxit!</h2>
+            
+            {/* Visualitzador integrat */}
+            <video 
+              controls 
+              src={`http://localhost:8000/output/Tops_Finals/${videoAcabat}`} 
+              style={{ width: "100%", maxHeight: "400px", backgroundColor: "black", borderRadius: "8px", border: "1px solid #333", marginBottom: "30px" }}
+            />
+
+            <div style={{ display: "flex", gap: "20px", justifyContent: "center" }}>
+              <button 
+                onClick={() => window.open(`http://localhost:8000/output/Tops_Finals/${videoAcabat}`, '_blank')} 
+                style={{ padding: "12px 24px", backgroundColor: "#3b82f6", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: "bold", fontSize: "1.1rem" }}
+              >
+                🍿 Obrir en pestanya nova
+              </button>
+              {/* MODIFICAT: Crida a la nova funció en lloc del reload */}
+              <button 
+                onClick={netejarTop} 
+                style={{ padding: "12px 24px", backgroundColor: "#4b5563", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: "bold", fontSize: "1.1rem" }}
+              >
+                🔄 Netejar i Crear un altre Top
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* ZONA DE RENDERITZACIÓ ESTÀNDARD */
+          <>
+            {renderitzantTop && (
+              <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "15px" }}>
+                <div style={{ flex: 1, backgroundColor: "#111", borderRadius: "8px", overflow: "hidden", border: "1px solid #444" }}>
+                  <div style={{ width: `${progres}%`, height: "20px", backgroundColor: "#3b82f6", transition: "width 0.3s ease-in-out" }}></div>
+                </div>
+                <button onClick={cancelarRender} style={{ padding: "0 20px", height: "20px", boxSizing: "content-box", backgroundColor: "#ef4444", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "bold" }}>
+                  🛑 Cancel·lar
+                </button>
+              </div>
+            )}
+
+            {!renderitzantTop && (
+              <button onClick={generarTopFinal} style={{ width: "100%", padding: "15px 40px", fontSize: "1.3rem", backgroundColor: "#eab308", color: "black", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: "bold" }}>
+                🚀 Generar Top Final
+              </button>
+            )}
+
+            {renderitzantTop && (
+               <p style={{ color: "white", fontSize: "1.1rem", fontWeight: "bold" }}>⚙️ Processant... {progres}%</p>
+            )}
+
+            {missatgeTop && <p style={{ color: renderitzantTop ? "#60a5fa" : (missatgeTop.includes("❌") || missatgeTop.includes("🛑") ? "#ef4444" : "#4ade80"), marginTop: "15px", fontSize: "1.1rem" }}>{missatgeTop}</p>}
+          </>
+        )}
       </div>
     </div>
   )
